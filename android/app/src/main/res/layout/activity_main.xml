@@ -1,6 +1,6 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:orientation="vertical" android:background="#0b0d10" android:layout_width="match_parent" android:layout_height="match_parent">
     <LinearLayout android:padding="8dp" android:gravity="center_vertical" android:layout_width="match_parent" android:layout_height="wrap_content">
-        <EditText android:id="@+id/backendUrl" android:hint="Backend URL (örn. http://192.168.1.10:8787)" android:text="http://192.168.1.10:8787" android:textColor="#ffffff" android:hintTextColor="#88909b" android:singleLine="true" android:inputType="textUri" android:layout_width="0dp" android:layout_weight="1" android:layout_height="48dp" />
+        <EditText android:id="@+id/backendUrl" android:hint="Backend URL (örn. http://192.168.1.10:8787)" android:text="http://192.168.1.10:8787" android:textColor="#ffffff" android:textColorHint="#88909b" android:singleLine="true" android:inputType="textUri" android:layout_width="0dp" android:layout_weight="1" android:layout_height="48dp" />
         <Button android:id="@+id/open" android:text="AÇ" android:layout_width="80dp" android:layout_height="48dp" />
     </LinearLayout>
     <WebView android:id="@+id/web" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" />
