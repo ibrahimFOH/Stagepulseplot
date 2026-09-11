@@ -1,168 +1,29 @@
 import http from 'node:http';
-import { URL } from 'node:url';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { MixerState } from '../core/state.js';
 import { M32Driver } from '../protocols/m32.js';
-import { createDefaultState, setByPath } from '../core/state.js';
-
-const HOST = process.env.HOST || '127.0.0.1';
-const PORT = Number(process.env.PORT || 3000);
-
-const state = createDefaultState();
-let driver = null;
-const clients = new Set();
-
-function broadcast(event) {
-  const data = `data: ${JSON.stringify(event)}\n\n`;
-  for (const res of clients) res.write(data);
-}
-
-function applyFeedback(packet) {
-  state.rawFeedback.push(packet);
-  if (state.rawFeedback.length > 5000) state.rawFeedback.shift();
-  state.lastRxAt = Date.now();
-  setByPath(state, ['feedback', packet.address.replace(/^\//, '').replaceAll('/', '.')], packet.args);
-  broadcast({ type: 'feedback', ...packet });
-}
-
-function attachDriver(instance) {
-  instance.on('feedback', applyFeedback);
-  instance.on('connected', () => { state.connected = true; broadcast({ type: 'connection', connected: true }); });
-  instance.on('disconnected', () => { state.connected = false; broadcast({ type: 'connection', connected: false }); });
-  instance.on('protocolError', (error) => broadcast({ type: 'error', error: error.message }));
-  instance.on('error', (error) => broadcast({ type: 'error', error: error.message }));
-}
-
-function json(res, status, body) {
-  const payload = JSON.stringify(body);
-  res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
-  res.end(payload);
-}
-
-function serveStatic(req, res) {
-  const path = new URL(req.url, `http://${req.headers.host || 'localhost'}`).pathname;
-  const files = {
-    '/': ['text/html; charset=utf-8', new URL('../../public/index.html', import.meta.url)],
-    '/index.html': ['text/html; charset=utf-8', new URL('../../public/index.html', import.meta.url)],
-    '/app.js': ['text/javascript; charset=utf-8', new URL('../../public/app.js', import.meta.url)],
-    '/style.css': ['text/css; charset=utf-8', new URL('../../public/style.css', import.meta.url)],
-  };
-  const entry = files[path];
-  if (!entry) return json(res, 404, { error: 'Not found' });
-  import('node:fs/promises').then(({ readFile }) => readFile(entry[1])).then((data) => {
-    res.writeHead(200, { 'content-type': entry[0], 'cache-control': 'no-store' });
-    res.end(data);
-  }).catch(() => json(res, 500, { error: 'Read failure' }));
-}
-
-function body(req) {
-  return new Promise((resolve, reject) => {
-    let raw = '';
-    req.setEncoding('utf8');
-    req.on('data', (chunk) => { raw += chunk; });
-    req.on('end', () => {
-      try { resolve(raw ? JSON.parse(raw) : {}); } catch (error) { reject(error); }
-    });
-    req.on('error', reject);
-  });
-}
-
-async function handle(req, res) {
-  const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
-
-  if (req.method === 'GET' && url.pathname === '/health') {
-    return json(res, 200, { ok: true, connected: state.connected, model: state.model });
-  }
-
-  if (req.method === 'GET' && url.pathname === '/api/state') {
-    return json(res, 200, state);
-  }
-
-  if (req.method === 'GET' && url.pathname === '/api/events') {
-    res.writeHead(200, {
-      'content-type': 'text/event-stream; charset=utf-8',
-      'cache-control': 'no-cache, no-store, must-revalidate',
-      connection: 'keep-alive',
-      'access-control-allow-origin': '*',
-    });
-    res.write(`data: ${JSON.stringify({ type: 'state', state })}\n\n`);
-    clients.add(res);
-    req.on('close', () => clients.delete(res));
-    return;
-  }
-
-  if (req.method === 'POST' && url.pathname === '/api/connect') {
-    try {
-      const input = await body(req);
-      if (!input.host) return json(res, 400, { error: 'host is required' });
-      if (driver) driver.close();
-      driver = new M32Driver({ host: input.host, port: input.port });
-      attachDriver(driver);
-      await driver.connect();
-      state.connected = true;
-      state.info.host = input.host;
-      return json(res, 200, { ok: true, message: `Connected to ${input.host}` });
-    } catch (error) {
-      state.connected = false;
-      return json(res, 500, { error: error.message });
-    }
-  }
-
-  if (req.method === 'POST' && url.pathname === '/api/disconnect') {
-    driver?.close();
-    driver = null;
-    state.connected = false;
-    return json(res, 200, { ok: true });
-  }
-
-  if (req.method === 'POST' && url.pathname === '/api/command') {
-    try {
-      const input = await body(req);
-      if (!driver) return json(res, 409, { error: 'M32 is not connected' });
-      const args = input.args || {};
-      const commands = {
-        setChannelFader: () => driver.setChannelFader(args.id, args.value),
-        setChannelMute: () => driver.setChannelMute(args.id, args.on),
-        setChannelPan: () => driver.setChannelPan(args.id, args.value),
-        setChannelGain: () => driver.setChannelGain(args.id, args.value),
-        setChannelPhantom: () => driver.setChannelPhantom(args.id, args.on),
-        setChannelPolarity: () => driver.setChannelPolarity(args.id, args.on),
-        setChannelHpf: () => driver.setChannelHpf(args.id, args.frequency),
-        setChannelEqBand: () => driver.setChannelEqBand(args.id, args.band, args.options),
-        setBusSend: () => driver.setBusSend(args.channel, args.bus, args.options),
-        setBusFader: () => driver.setBusFader(args.id, args.value),
-        setBusMute: () => driver.setBusMute(args.id, args.on),
-        setMatrixFader: () => driver.setMatrixFader(args.id, args.value),
-        setDcaFader: () => driver.setDcaFader(args.id, args.value),
-        setDcaMute: () => driver.setDcaMute(args.id, args.on),
-        setMainFader: () => driver.setMainFader(args.value),
-        setMainMute: () => driver.setMainMute(args.on),
-        setMonoFader: () => driver.setMonoFader(args.value),
-        setParam: () => driver.setParam(args.address, ...(args.values || [])),
-        refresh: () => driver.refresh(),
-      };
-      const fn = commands[input.command];
-      if (!fn) return json(res, 400, { error: `Unknown command: ${input.command}` });
-      await fn();
-      return json(res, 200, { ok: true });
-    } catch (error) {
-      return json(res, 500, { error: error.message });
-    }
-  }
-
-  if (req.method === 'GET') return serveStatic(req, res);
-  return json(res, 405, { error: 'Method not allowed' });
-}
-
-const server = http.createServer((req, res) => {
-  handle(req, res).catch((error) => json(res, 500, { error: error.message }));
-});
-
-server.listen(PORT, HOST, () => {
-  console.log(`StagePulseMix listening on http://${HOST}:${PORT}`);
-});
-
-const shutdown = () => {
-  driver?.close();
-  server.close(() => process.exit(0));
+import { AllenHeathDriver } from '../protocols/allenheath.js';
+const __dirname=path.dirname(fileURLToPath(import.meta.url));
+const publicDir=path.resolve(__dirname,'../../public');
+const state=new MixerState(40);let driver=null;const clients=new Set();
+const json=(res,code,body)=>{const b=Buffer.from(JSON.stringify(body));res.writeHead(code,{'content-type':'application/json; charset=utf-8','content-length':b.length});res.end(b)};
+const snapshot=()=>({...state});
+const broadcast=()=>{const p=`data: ${JSON.stringify(snapshot())}\n\n`;for(const r of clients)r.write(p)};
+setInterval(broadcast,100);
+const commands={
+ fader:(d,c)=>d.setInputFader(c.channel,c.value),mute:(d,c)=>d.setInputMute(c.channel,c.value),pan:(d,c)=>d.setInputPan(c.channel,c.value),name:(d,c)=>d.setName(c.channel,c.value),trim:(d,c)=>d.setTrim(c.channel,c.value),invert:(d,c)=>d.setInvert(c.channel,c.value),phantom:(d,c)=>d.setPhantom(c.channel,c.value),hpf:(d,c)=>d.setHighPass(c.channel,c.enabled,c.frequency,c.slope),delay:(d,c)=>d.setDelay(c.channel,c.enabled,c.ms),eq:(d,c)=>d.setEqBand(c.channel,c.band,c.params||{}),gate:(d,c)=>d.setGate(c.channel,c.params||{}),gateFilter:(d,c)=>d.setGateFilter(c.channel,c.params||{}),dynamics:(d,c)=>d.setDynamics(c.channel,c.params||{}),insert:(d,c)=>d.setInsert(c.channel,c.params||{}),
+ busSend:(d,c)=>d.setBusSend(c.channel,c.bus,c.value,c.options||{}),busSendOn:(d,c)=>d.setBusSendOn(c.channel,c.bus,c.value),busSendPan:(d,c)=>d.setBusSendPan(c.channel,c.bus,c.value),busSendPrePost:(d,c)=>d.setBusSendPrePost(c.channel,c.bus,c.value),busFader:(d,c)=>d.setBusFader(c.bus,c.value),busMute:(d,c)=>d.setBusMute(c.bus,c.value),matrixFader:(d,c)=>d.setMatrixFader(c.matrix,c.value),matrixMute:(d,c)=>d.setMatrixMute(c.matrix,c.value),matrixEq:(d,c)=>d.setMatrixEqBand(c.matrix,c.band,c.params||{}),dcaFader:(d,c)=>d.setDcaFader(c.dca,c.value),dcaMute:(d,c)=>d.setDcaMute(c.dca,c.value),dcaAssign:(d,c)=>d.setDcaAssign(c.dca,c.channel,c.value),
+ mainFader:(d,c)=>d.setMainFader(c.value),mainMute:(d,c)=>d.setMainMute(c.value),monoFader:(d,c)=>d.setMonoFader(c.value),monoMute:(d,c)=>d.setMonoMute(c.value),solo:(d,c)=>d.setSolo(c.channel,c.value),clearSolo:d=>d.clearSolo(),soloSafe:(d,c)=>d.setSoloSafe(c.channel,c.value),muteGroup:(d,c)=>d.setMuteGroup(c.group,c.value),muteGroupAssign:(d,c)=>d.setMuteGroupAssign(c.group,c.channel,c.value),
+ fxType:(d,c)=>d.setFxType(c.slot,c.value),fxSource:(d,c)=>d.setFxSource(c.slot,c.value),fxParam:(d,c)=>d.setFxParameter(c.slot,c.parameter,c.value),fxBlock:(d,c)=>d.setFxParameterBlock(c.slot,c.values||[]),geqBand:(d,c)=>d.setGeqBand(c.slot,c.band,c.value),routing:(d,c)=>d.setRouting(c.address,...(Array.isArray(c.args)?c.args:[])),output:(d,c)=>d.setOutput(c.address,...(Array.isArray(c.args)?c.args:[])),outputPatch:(d,c)=>d.setOutputPatch(c.bank,c.channel,c.source),monitor:(d,c)=>d.setMonitorControl(c.address,c.value),monitorVolume:(d,c)=>d.setMonitorVolume(c.value),monitorSolo:(d,c)=>d.setMonitorSolo(c.value),monitorDim:(d,c)=>d.setMonitorDim(c.value),monitorMono:(d,c)=>d.setMonitorMono(c.value),monitorDelay:(d,c)=>d.setMonitorDelay(c.value),oscillator:(d,c)=>d.setOscillator(c.params||{}),talkback:(d,c)=>d.setTalkbackControl(c.which,c.address,c.value),
+ scene:(d,c)=>d.recallScene(c.value),snippet:(d,c)=>d.recallSnippet(c.value),cue:(d,c)=>d.recallCue(c.value),nextCue:d=>d.nextCue(),previousCue:d=>d.previousCue(),storeScene:(d,c)=>d.storeScene(c.value,c.name||''),storeSnippet:(d,c)=>d.storeSnippet(c.value,c.name||''),deleteScene:(d,c)=>d.deleteScene(c.value),deleteSnippet:(d,c)=>d.deleteSnippet(c.value),renameScene:(d,c)=>d.renameScene(c.value,c.name),renameSnippet:(d,c)=>d.renameSnippet(c.value,c.name),saveLibrary:(d,c)=>d.saveLibrary(c.kind,c.index,c.name||'',...(c.extra||[])),loadLibrary:(d,c)=>d.loadLibrary(c.kind,c.index),deleteLibrary:(d,c)=>d.deleteLibrary(c.kind,c.index),renameLibrary:(d,c)=>d.renameLibrary(c.kind,c.index,c.name),
+ recorder:(d,c)=>d.setRecorder(c.action,c.value),card:(d,c)=>d.setCard(c.action,c.value),usb:(d,c)=>d.setUsb(c.action,c.value),surface:(d,c)=>d.setSurface(c.path,c.value),bank:(d,c)=>d.setBank(c.value),sendBusSelect:(d,c)=>d.setSendBus(c.value),headamp:(d,c)=>d.setHeadamp(c.index,c.params||{}),osc:(d,c)=>d.setParam(c.address,...(Array.isArray(c.args)?c.args:[]))
 };
-process.on('SIGINT', shutdown);
-process.on('SIGTERM', shutdown);
+function readBody(req,cb){let s='';req.setEncoding('utf8');req.on('data',c=>s+=c);req.on('end',()=>cb(s))}
+function serve(req,res){const url=new URL(req.url,'http://localhost');if(url.pathname==='/health')return json(res,200,{ok:true,version:'0.9.1',protocol:driver?'connected':'idle'});if(url.pathname==='/api/state')return json(res,200,snapshot());if(url.pathname==='/events'){res.writeHead(200,{'content-type':'text/event-stream','cache-control':'no-cache',connection:'keep-alive','access-control-allow-origin':'*'});clients.add(res);res.write(`data: ${JSON.stringify(snapshot())}\n\n`);req.on('close',()=>clients.delete(res));return}
+ if(url.pathname==='/api/connect'&&req.method==='POST')return readBody(req,body=>{try{if(driver)driver.close();const c=JSON.parse(body);if(c.vendor==='midas')state.resetMidas(c.channelCount||40);else state.channels=Array.from({length:c.channelCount||64},(_,i)=>({id:i+1,name:`CH ${i+1}`,fader:.75,mute:false,pan:0,meter:-60}));driver=c.vendor==='midas'?new M32Driver(state,{host:c.host,port:Number(c.port)||10023,localPort:Number(c.localPort)||10024,model:c.model||'M32'}):new AllenHeathDriver(state,{host:c.host,port:Number(c.port)||51325,model:c.model||'dlive',baseMidiChannel:Number(c.baseMidiChannel)||0});driver.connect().then(broadcast).catch(e=>state.setConnection({status:'error',error:e.message}));json(res,200,{ok:true})}catch(e){json(res,400,{ok:false,error:e.message})}});
+ if(url.pathname==='/api/disconnect'&&req.method==='POST'){if(driver)driver.close();driver=null;return json(res,200,{ok:true})}
+ if(url.pathname==='/api/command'&&req.method==='POST')return readBody(req,body=>{try{if(!driver)throw new Error('Mixer bağlantısı yok');const c=JSON.parse(body);const fn=commands[c.action];if(!fn)throw new Error(`Desteklenmeyen komut: ${c.action}`);fn(driver,c);broadcast();json(res,200,{ok:true})}catch(e){json(res,400,{ok:false,error:e.message})}});
+ const file=url.pathname==='/'?path.join(publicDir,'index.html'):path.join(publicDir,url.pathname);if(!file.startsWith(publicDir))return json(res,403,{error:'forbidden'});fs.readFile(file,(err,data)=>{if(err)return json(res,404,{error:'not found'});const ext=path.extname(file);const types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.json':'application/json'};res.writeHead(200,{'content-type':types[ext]||'application/octet-stream'});res.end(data)})}
+http.createServer(serve).listen(Number(process.env.PORT)||8787,process.env.HOST||'127.0.0.1',()=>console.log('StagePulseMix: http://127.0.0.1:8787'));
