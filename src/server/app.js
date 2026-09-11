@@ -5,25 +5,131 @@ import { fileURLToPath } from 'node:url';
 import { MixerState } from '../core/state.js';
 import { M32Driver } from '../protocols/m32.js';
 import { AllenHeathDriver } from '../protocols/allenheath.js';
-const __dirname=path.dirname(fileURLToPath(import.meta.url));
-const publicDir=path.resolve(__dirname,'../../public');
-const state=new MixerState(40);let driver=null;const clients=new Set();
-const json=(res,code,body)=>{const b=Buffer.from(JSON.stringify(body));res.writeHead(code,{'content-type':'application/json; charset=utf-8','content-length':b.length});res.end(b)};
-const snapshot=()=>({...state});
-const broadcast=()=>{const p=`data: ${JSON.stringify(snapshot())}\n\n`;for(const r of clients)r.write(p)};
-setInterval(broadcast,100);
-const commands={
- fader:(d,c)=>d.setInputFader(c.channel,c.value),mute:(d,c)=>d.setInputMute(c.channel,c.value),pan:(d,c)=>d.setInputPan(c.channel,c.value),name:(d,c)=>d.setName(c.channel,c.value),trim:(d,c)=>d.setTrim(c.channel,c.value),invert:(d,c)=>d.setInvert(c.channel,c.value),phantom:(d,c)=>d.setPhantom(c.channel,c.value),hpf:(d,c)=>d.setHighPass(c.channel,c.enabled,c.frequency,c.slope),delay:(d,c)=>d.setDelay(c.channel,c.enabled,c.ms),eq:(d,c)=>d.setEqBand(c.channel,c.band,c.params||{}),gate:(d,c)=>d.setGate(c.channel,c.params||{}),gateFilter:(d,c)=>d.setGateFilter(c.channel,c.params||{}),dynamics:(d,c)=>d.setDynamics(c.channel,c.params||{}),insert:(d,c)=>d.setInsert(c.channel,c.params||{}),
- busSend:(d,c)=>d.setBusSend(c.channel,c.bus,c.value,c.options||{}),busSendOn:(d,c)=>d.setBusSendOn(c.channel,c.bus,c.value),busSendPan:(d,c)=>d.setBusSendPan(c.channel,c.bus,c.value),busSendPrePost:(d,c)=>d.setBusSendPrePost(c.channel,c.bus,c.value),busFader:(d,c)=>d.setBusFader(c.bus,c.value),busMute:(d,c)=>d.setBusMute(c.bus,c.value),matrixFader:(d,c)=>d.setMatrixFader(c.matrix,c.value),matrixMute:(d,c)=>d.setMatrixMute(c.matrix,c.value),matrixEq:(d,c)=>d.setMatrixEqBand(c.matrix,c.band,c.params||{}),dcaFader:(d,c)=>d.setDcaFader(c.dca,c.value),dcaMute:(d,c)=>d.setDcaMute(c.dca,c.value),dcaAssign:(d,c)=>d.setDcaAssign(c.dca,c.channel,c.value),
- mainFader:(d,c)=>d.setMainFader(c.value),mainMute:(d,c)=>d.setMainMute(c.value),monoFader:(d,c)=>d.setMonoFader(c.value),monoMute:(d,c)=>d.setMonoMute(c.value),solo:(d,c)=>d.setSolo(c.channel,c.value),clearSolo:d=>d.clearSolo(),soloSafe:(d,c)=>d.setSoloSafe(c.channel,c.value),muteGroup:(d,c)=>d.setMuteGroup(c.group,c.value),muteGroupAssign:(d,c)=>d.setMuteGroupAssign(c.group,c.channel,c.value),
- fxType:(d,c)=>d.setFxType(c.slot,c.value),fxSource:(d,c)=>d.setFxSource(c.slot,c.value),fxParam:(d,c)=>d.setFxParameter(c.slot,c.parameter,c.value),fxBlock:(d,c)=>d.setFxParameterBlock(c.slot,c.values||[]),geqBand:(d,c)=>d.setGeqBand(c.slot,c.band,c.value),routing:(d,c)=>d.setRouting(c.address,...(Array.isArray(c.args)?c.args:[])),output:(d,c)=>d.setOutput(c.address,...(Array.isArray(c.args)?c.args:[])),outputPatch:(d,c)=>d.setOutputPatch(c.bank,c.channel,c.source),monitor:(d,c)=>d.setMonitorControl(c.address,c.value),monitorVolume:(d,c)=>d.setMonitorVolume(c.value),monitorSolo:(d,c)=>d.setMonitorSolo(c.value),monitorDim:(d,c)=>d.setMonitorDim(c.value),monitorMono:(d,c)=>d.setMonitorMono(c.value),monitorDelay:(d,c)=>d.setMonitorDelay(c.value),oscillator:(d,c)=>d.setOscillator(c.params||{}),talkback:(d,c)=>d.setTalkbackControl(c.which,c.address,c.value),
- scene:(d,c)=>d.recallScene(c.value),snippet:(d,c)=>d.recallSnippet(c.value),cue:(d,c)=>d.recallCue(c.value),nextCue:d=>d.nextCue(),previousCue:d=>d.previousCue(),storeScene:(d,c)=>d.storeScene(c.value,c.name||''),storeSnippet:(d,c)=>d.storeSnippet(c.value,c.name||''),deleteScene:(d,c)=>d.deleteScene(c.value),deleteSnippet:(d,c)=>d.deleteSnippet(c.value),renameScene:(d,c)=>d.renameScene(c.value,c.name),renameSnippet:(d,c)=>d.renameSnippet(c.value,c.name),saveLibrary:(d,c)=>d.saveLibrary(c.kind,c.index,c.name||'',...(c.extra||[])),loadLibrary:(d,c)=>d.loadLibrary(c.kind,c.index),deleteLibrary:(d,c)=>d.deleteLibrary(c.kind,c.index),renameLibrary:(d,c)=>d.renameLibrary(c.kind,c.index,c.name),
- recorder:(d,c)=>d.setRecorder(c.action,c.value),card:(d,c)=>d.setCard(c.action,c.value),usb:(d,c)=>d.setUsb(c.action,c.value),surface:(d,c)=>d.setSurface(c.path,c.value),bank:(d,c)=>d.setBank(c.value),sendBusSelect:(d,c)=>d.setSendBus(c.value),headamp:(d,c)=>d.setHeadamp(c.index,c.params||{}),osc:(d,c)=>d.setParam(c.address,...(Array.isArray(c.args)?c.args:[]))
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const publicDir = path.resolve(__dirname, '../../public');
+const state = new MixerState(40);
+let driver = null;
+const clients = new Set();
+
+const json = (res, code, body) => {
+  const b = Buffer.from(JSON.stringify(body));
+  res.writeHead(code, {
+    'content-type': 'application/json; charset=utf-8',
+    'content-length': b.length,
+  });
+  res.end(b);
 };
-function readBody(req,cb){let s='';req.setEncoding('utf8');req.on('data',c=>s+=c);req.on('end',()=>cb(s))}
-function serve(req,res){const url=new URL(req.url,'http://localhost');if(url.pathname==='/health')return json(res,200,{ok:true,version:'0.9.1',protocol:driver?'connected':'idle'});if(url.pathname==='/api/state')return json(res,200,snapshot());if(url.pathname==='/events'){res.writeHead(200,{'content-type':'text/event-stream','cache-control':'no-cache',connection:'keep-alive','access-control-allow-origin':'*'});clients.add(res);res.write(`data: ${JSON.stringify(snapshot())}\n\n`);req.on('close',()=>clients.delete(res));return}
- if(url.pathname==='/api/connect'&&req.method==='POST')return readBody(req,body=>{try{if(driver)driver.close();const c=JSON.parse(body);if(c.vendor==='midas')state.resetMidas(c.channelCount||40);else state.channels=Array.from({length:c.channelCount||64},(_,i)=>({id:i+1,name:`CH ${i+1}`,fader:.75,mute:false,pan:0,meter:-60}));driver=c.vendor==='midas'?new M32Driver(state,{host:c.host,port:Number(c.port)||10023,localPort:Number(c.localPort)||10024,model:c.model||'M32'}):new AllenHeathDriver(state,{host:c.host,port:Number(c.port)||51325,model:c.model||'dlive',baseMidiChannel:Number(c.baseMidiChannel)||0});driver.connect().then(broadcast).catch(e=>state.setConnection({status:'error',error:e.message}));json(res,200,{ok:true})}catch(e){json(res,400,{ok:false,error:e.message})}});
- if(url.pathname==='/api/disconnect'&&req.method==='POST'){if(driver)driver.close();driver=null;return json(res,200,{ok:true})}
- if(url.pathname==='/api/command'&&req.method==='POST')return readBody(req,body=>{try{if(!driver)throw new Error('Mixer bağlantısı yok');const c=JSON.parse(body);const fn=commands[c.action];if(!fn)throw new Error(`Desteklenmeyen komut: ${c.action}`);fn(driver,c);broadcast();json(res,200,{ok:true})}catch(e){json(res,400,{ok:false,error:e.message})}});
- const file=url.pathname==='/'?path.join(publicDir,'index.html'):path.join(publicDir,url.pathname);if(!file.startsWith(publicDir))return json(res,403,{error:'forbidden'});fs.readFile(file,(err,data)=>{if(err)return json(res,404,{error:'not found'});const ext=path.extname(file);const types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.json':'application/json'};res.writeHead(200,{'content-type':types[ext]||'application/octet-stream'});res.end(data)})}
-http.createServer(serve).listen(Number(process.env.PORT)||8787,process.env.HOST||'127.0.0.1',()=>console.log('StagePulseMix: http://127.0.0.1:8787'));
+
+const snapshot = () => state.toJSON();
+const broadcast = () => {
+  const payload = `data: ${JSON.stringify(snapshot())}\n\n`;
+  for (const res of clients) res.write(payload);
+};
+
+function attachDriverEvents(d) {
+  d.on?.('connected', () => { state.setConnection({ status: 'connected', vendor: d.vendor || 'midas', model: d.model || 'M32' }); broadcast(); });
+  d.on?.('disconnected', () => { state.setConnection({ status: 'disconnected' }); broadcast(); });
+  d.on?.('feedback', (packet) => { state.data.rawFeedback.push({ timestamp: Date.now(), ...packet }); if (state.data.rawFeedback.length > 5000) state.data.rawFeedback.shift(); broadcast(); });
+  d.on?.('protocolError', (error) => { state.setConnection({ status: 'protocol-error', error: error.message }); broadcast(); });
+}
+
+const commands = {
+  setChannelFader: (d, c) => d.setChannelFader(c.channel ?? c.id, c.value),
+  setChannelMute: (d, c) => d.setChannelMute(c.channel ?? c.id, c.on ?? c.value),
+  setChannelPan: (d, c) => d.setChannelPan(c.channel ?? c.id, c.value),
+  setChannelGain: (d, c) => d.setChannelGain?.(c.channel ?? c.id, c.value),
+  setChannelPhantom: (d, c) => d.setChannelPhantom?.(c.channel ?? c.id, c.on ?? c.value),
+  setChannelPolarity: (d, c) => d.setChannelPolarity?.(c.channel ?? c.id, c.on ?? c.value),
+  setChannelEqBand: (d, c) => d.setChannelEqBand?.(c.channel ?? c.id, c.band, c),
+  setBusSend: (d, c) => d.setBusSend?.(c.channel, c.bus, c),
+  setBusFader: (d, c) => d.setBusFader?.(c.bus, c.value),
+  setBusMute: (d, c) => d.setBusMute?.(c.bus, c.on ?? c.value),
+  setMatrixFader: (d, c) => d.setMatrixFader?.(c.matrix, c.value),
+  setDcaFader: (d, c) => d.setDcaFader?.(c.dca, c.value),
+  setDcaMute: (d, c) => d.setDcaMute?.(c.dca, c.on ?? c.value),
+  setMainFader: (d, c) => d.setMainFader?.(c.value),
+  setMainMute: (d, c) => d.setMainMute?.(c.on ?? c.value),
+  setMonoFader: (d, c) => d.setMonoFader?.(c.value),
+  setParam: (d, c) => d.setParam(c.address, ...(Array.isArray(c.args) ? c.args : [])),
+};
+
+function readBody(req) {
+  return new Promise((resolve, reject) => {
+    let body = '';
+    req.setEncoding('utf8');
+    req.on('data', (chunk) => { body += chunk; });
+    req.on('end', () => resolve(body));
+    req.on('error', reject);
+  });
+}
+
+async function handle(req, res) {
+  const url = new URL(req.url, 'http://localhost');
+
+  if (url.pathname === '/health') return json(res, 200, { ok: true, version: '1.0.0', connected: state.data.connected, model: state.data.model });
+  if (url.pathname === '/api/state') return json(res, 200, snapshot());
+
+  if (url.pathname === '/api/events') {
+    res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', connection: 'keep-alive' });
+    clients.add(res);
+    res.write(`data: ${JSON.stringify(snapshot())}\n\n`);
+    req.on('close', () => clients.delete(res));
+    return;
+  }
+
+  if (url.pathname === '/api/connect' && req.method === 'POST') {
+    try {
+      if (driver) driver.close();
+      const c = JSON.parse(await readBody(req));
+      const vendor = c.vendor || 'midas';
+      if (vendor === 'midas') {
+        state.resetMidas(c.channelCount || 40);
+        driver = new M32Driver({ host: c.host, port: Number(c.port) || 10023, localPort: Number(c.localPort) || 10024, model: c.model || 'M32' });
+      } else {
+        driver = new AllenHeathDriver(c);
+      }
+      attachDriverEvents(driver);
+      await driver.connect();
+      return json(res, 200, { ok: true, vendor, model: driver.model || c.model || null });
+    } catch (error) {
+      state.setConnection({ status: 'error', error: error.message });
+      broadcast();
+      return json(res, 400, { ok: false, error: error.message });
+    }
+  }
+
+  if (url.pathname === '/api/disconnect' && req.method === 'POST') {
+    driver?.close?.();
+    driver = null;
+    state.setConnection({ status: 'disconnected' });
+    broadcast();
+    return json(res, 200, { ok: true });
+  }
+
+  if (url.pathname === '/api/command' && req.method === 'POST') {
+    try {
+      if (!driver) throw new Error('Mixer bağlantısı yok');
+      const c = JSON.parse(await readBody(req));
+      const fn = commands[c.action];
+      if (!fn) throw new Error(`Desteklenmeyen komut: ${c.action}`);
+      await fn(driver, c.args || {});
+      broadcast();
+      return json(res, 200, { ok: true });
+    } catch (error) {
+      return json(res, 400, { ok: false, error: error.message });
+    }
+  }
+
+  const file = url.pathname === '/' ? path.join(publicDir, 'index.html') : path.join(publicDir, url.pathname.replace(/^\//, ''));
+  if (!file.startsWith(publicDir)) return json(res, 403, { error: 'forbidden' });
+  fs.readFile(file, (error, data) => {
+    if (error) return json(res, 404, { error: 'not found' });
+    const ext = path.extname(file);
+    const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8' };
+    res.writeHead(200, { 'content-type': types[ext] || 'application/octet-stream' });
+    res.end(data);
+  });
+}
+
+http.createServer(handle).listen(Number(process.env.PORT) || 8787, process.env.HOST || '127.0.0.1', () => console.log('StagePulseMix: http://127.0.0.1:8787'));
