@@ -3,17 +3,14 @@
     android:background="#0b0d10"
     android:layout_width="match_parent"
     android:layout_height="match_parent">
-
     <LinearLayout
         android:padding="8dp"
         android:gravity="center_vertical"
         android:layout_width="match_parent"
         android:layout_height="wrap_content">
-
         <EditText
             android:id="@+id/backendUrl"
-            android:hint="X32 IP adresi (örn. 192.168.1.100)"
-            android:text=""
+            android:hint="X32 / M32 IP adresi"
             android:textColor="#ffffff"
             android:textColorHint="#88909b"
             android:singleLine="true"
@@ -21,16 +18,15 @@
             android:layout_width="0dp"
             android:layout_weight="1"
             android:layout_height="48dp" />
-
         <Button
             android:id="@+id/open"
             android:text="BAĞLAN"
-            android:layout_width="100dp"
+            android:layout_width="110dp"
             android:layout_height="48dp" />
     </LinearLayout>
-
     <WebView
         android:id="@+id/web"
+        android:visibility="gone"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1" />
