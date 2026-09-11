@@ -44,14 +44,19 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
 
       - name: Prepare signing keystore
-        if: ${{ secrets.STAGEPULSE_KEYSTORE_BASE64 != '' }}
         env:
           STAGEPULSE_KEYSTORE_BASE64: ${{ secrets.STAGEPULSE_KEYSTORE_BASE64 }}
           STAGEPULSE_KEYSTORE_PASSWORD: ${{ secrets.STAGEPULSE_KEYSTORE_PASSWORD }}
           STAGEPULSE_KEY_ALIAS: ${{ secrets.STAGEPULSE_KEY_ALIAS }}
           STAGEPULSE_KEY_PASSWORD: ${{ secrets.STAGEPULSE_KEY_PASSWORD }}
         run: |
-          echo "$STAGEPULSE_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/stagepulse-release.keystore"
+          set -euo pipefail
+          test -n "$STAGEPULSE_KEYSTORE_BASE64"
+          test -n "$STAGEPULSE_KEYSTORE_PASSWORD"
+          test -n "$STAGEPULSE_KEY_ALIAS"
+          test -n "$STAGEPULSE_KEY_PASSWORD"
+          printf '%s' "$STAGEPULSE_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/stagepulse-release.keystore"
+          test -s "$RUNNER_TEMP/stagepulse-release.keystore"
           echo "STAGEPULSE_KEYSTORE_PATH=$RUNNER_TEMP/stagepulse-release.keystore" >> "$GITHUB_ENV"
           echo "STAGEPULSE_KEYSTORE_PASSWORD=$STAGEPULSE_KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
           echo "STAGEPULSE_KEY_ALIAS=$STAGEPULSE_KEY_ALIAS" >> "$GITHUB_ENV"
@@ -63,12 +68,14 @@ jobs:
 
       - name: Verify APK exists
         run: |
-          APK=$(find android/app/build/outputs/apk/release -name '*.apk' -print -quit)
+          set -euo pipefail
+          APK=$(find android/app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' -print -quit)
           test -n "$APK"
           echo "APK=$APK" >> "$GITHUB_ENV"
 
       - name: Verify APK signature
         run: |
+          set -euo pipefail
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$APK"
 
       - name: Upload APK
