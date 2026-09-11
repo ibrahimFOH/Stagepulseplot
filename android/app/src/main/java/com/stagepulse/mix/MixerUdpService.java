@@ -75,13 +75,14 @@ public final class MixerUdpService {
         try {
           DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
           socket.receive(packet);
-          OscPacket decoded = decode(packet.getData(), packet.getOffset(), packet.getLength());
-          if (decoded == null) continue;
+          List<OscPacket> decoded = decodePackets(packet.getData(), packet.getOffset(), packet.getLength());
           lastRxMs = System.currentTimeMillis();
-          final Object[] args = decoded.args;
-          main.post(() -> listener == null ? null : listener.onPacket(decoded.address, args));
-        } catch (java.net.SocketTimeoutException ignored) {
-        }
+          for (OscPacket p : decoded) {
+            final String address = p.address;
+            final Object[] args = p.args;
+            main.post(() -> { if (listener != null) listener.onPacket(address, args); });
+          }
+        } catch (java.net.SocketTimeoutException ignored) { }
       }
     } catch (Exception e) {
       if (running) postError(e);
@@ -157,30 +158,48 @@ public final class MixerUdpService {
     return out;
   }
 
-  private static OscPacket decode(byte[] packet, int offset, int length) {
-    try {
-      Cursor c = new Cursor(packet, offset, length);
-      String address = c.readString();
-      String tags = c.readString();
-      if (!tags.startsWith(",")) return null;
-      List<Object> args = new ArrayList<>();
-      for (int i = 1; i < tags.length(); i++) {
-        switch (tags.charAt(i)) {
-          case 's': args.add(c.readString()); break;
-          case 'i': args.add(c.readInt()); break;
-          case 'f': args.add(c.readFloat()); break;
-          case 'T': args.add(Boolean.TRUE); break;
-          case 'F': args.add(Boolean.FALSE); break;
-          default: return null;
-        }
+  private static List<OscPacket> decodePackets(byte[] packet, int offset, int length) {
+    Cursor c = new Cursor(packet, offset, length);
+    String address = c.readString();
+    if ("#bundle".equals(address)) {
+      c.skip(8);
+      List<OscPacket> result = new ArrayList<>();
+      while (c.remaining() >= 4) {
+        int size = c.readInt();
+        if (size <= 0 || size > c.remaining()) break;
+        result.addAll(decodePackets(c.readBytes(size), 0, size));
       }
-      return new OscPacket(address, args.toArray());
-    } catch (Exception ignored) { return null; }
+      return result;
+    }
+    String tags = c.readString();
+    if (!tags.startsWith(",")) return new ArrayList<>();
+    List<Object> args = new ArrayList<>();
+    for (int i = 1; i < tags.length(); i++) {
+      switch (tags.charAt(i)) {
+        case 's': args.add(c.readString()); break;
+        case 'i': args.add(c.readInt()); break;
+        case 'f': args.add(c.readFloat()); break;
+        case 'T': args.add(Boolean.TRUE); break;
+        case 'F': args.add(Boolean.FALSE); break;
+        case 'b':
+          int n = c.readInt();
+          args.add(c.readBytes(n));
+          c.align4();
+          break;
+        default: return new ArrayList<>();
+      }
+    }
+    List<OscPacket> one = new ArrayList<>();
+    one.add(new OscPacket(address, args.toArray()));
+    return one;
   }
 
   private static final class Cursor {
     final byte[] b; final int end; int pos;
     Cursor(byte[] b, int offset, int length) { this.b = b; this.pos = offset; this.end = offset + length; }
+    int remaining() { return end - pos; }
+    void skip(int n) { if (n < 0 || pos + n > end) throw new IllegalArgumentException(); pos += n; }
+    void align4() { pos = (pos + 3) & ~3; if (pos > end) throw new IllegalArgumentException(); }
     String readString() {
       int p = pos;
       while (p < end && b[p] != 0) p++;
@@ -190,14 +209,9 @@ public final class MixerUdpService {
       if (pos > end) throw new IllegalArgumentException();
       return s;
     }
-    int readInt() {
-      if (pos + 4 > end) throw new IllegalArgumentException();
-      int v = ByteBuffer.wrap(b, pos, 4).order(ByteOrder.BIG_ENDIAN).getInt(); pos += 4; return v;
-    }
-    float readFloat() {
-      if (pos + 4 > end) throw new IllegalArgumentException();
-      float v = ByteBuffer.wrap(b, pos, 4).order(ByteOrder.BIG_ENDIAN).getFloat(); pos += 4; return v;
-    }
+    int readInt() { if (pos + 4 > end) throw new IllegalArgumentException(); int v = ByteBuffer.wrap(b,pos,4).order(ByteOrder.BIG_ENDIAN).getInt(); pos += 4; return v; }
+    float readFloat() { if (pos + 4 > end) throw new IllegalArgumentException(); float v = ByteBuffer.wrap(b,pos,4).order(ByteOrder.BIG_ENDIAN).getFloat(); pos += 4; return v; }
+    byte[] readBytes(int n) { if (n < 0 || pos + n > end) throw new IllegalArgumentException(); byte[] out = new byte[n]; System.arraycopy(b,pos,out,0,n); pos += n; return out; }
   }
 
   private static final class OscPacket {
