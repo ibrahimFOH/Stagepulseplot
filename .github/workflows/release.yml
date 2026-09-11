@@ -47,22 +47,29 @@ jobs:
         if: ${{ secrets.STAGEPULSE_KEYSTORE_BASE64 != '' }}
         env:
           STAGEPULSE_KEYSTORE_BASE64: ${{ secrets.STAGEPULSE_KEYSTORE_BASE64 }}
+          STAGEPULSE_KEYSTORE_PASSWORD: ${{ secrets.STAGEPULSE_KEYSTORE_PASSWORD }}
+          STAGEPULSE_KEY_ALIAS: ${{ secrets.STAGEPULSE_KEY_ALIAS }}
+          STAGEPULSE_KEY_PASSWORD: ${{ secrets.STAGEPULSE_KEY_PASSWORD }}
         run: |
           echo "$STAGEPULSE_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/stagepulse-release.keystore"
           echo "STAGEPULSE_KEYSTORE_PATH=$RUNNER_TEMP/stagepulse-release.keystore" >> "$GITHUB_ENV"
-          echo "STAGEPULSE_KEYSTORE_PASSWORD=${{ secrets.STAGEPULSE_KEYSTORE_PASSWORD }}" >> "$GITHUB_ENV"
-          echo "STAGEPULSE_KEY_ALIAS=${{ secrets.STAGEPULSE_KEY_ALIAS }}" >> "$GITHUB_ENV"
-          echo "STAGEPULSE_KEY_PASSWORD=${{ secrets.STAGEPULSE_KEY_PASSWORD }}" >> "$GITHUB_ENV"
+          echo "STAGEPULSE_KEYSTORE_PASSWORD=$STAGEPULSE_KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+          echo "STAGEPULSE_KEY_ALIAS=$STAGEPULSE_KEY_ALIAS" >> "$GITHUB_ENV"
+          echo "STAGEPULSE_KEY_PASSWORD=$STAGEPULSE_KEY_PASSWORD" >> "$GITHUB_ENV"
 
       - name: Build release APK
         working-directory: android
         run: gradle :app:assembleRelease --no-daemon
 
-      - name: Verify APK signature state
+      - name: Verify APK exists
         run: |
           APK=$(find android/app/build/outputs/apk/release -name '*.apk' -print -quit)
           test -n "$APK"
-          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$APK" || true
+          echo "APK=$APK" >> "$GITHUB_ENV"
+
+      - name: Verify APK signature
+        run: |
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$APK"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
