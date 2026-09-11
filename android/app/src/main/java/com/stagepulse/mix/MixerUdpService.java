@@ -80,7 +80,9 @@ public final class MixerUdpService {
           for (OscPacket p : decoded) {
             final String address = p.address;
             final Object[] args = p.args;
-            main.post(() -> { if (listener != null) listener.onPacket(address, args); });
+            main.post(() -> {
+              if (listener != null) listener.onPacket(address, args);
+            });
           }
         } catch (java.net.SocketTimeoutException ignored) { }
       }
