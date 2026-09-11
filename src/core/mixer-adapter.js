@@ -23,7 +23,8 @@ export class MixerAdapter {
   }
 
   connect(options) {
-    return this.requireDriver().connect(options);
+    const d = this.requireDriver();
+    return d.connect(options);
   }
 
   close() {
@@ -32,27 +33,34 @@ export class MixerAdapter {
 
   command(action, args = {}) {
     const d = this.requireDriver();
+    const id = args.channel ?? args.id;
+    const value = args.value;
+    const boolValue = args.on ?? value;
+
     const map = {
-      setChannelFader: () => d.setChannelFader(args.channel ?? args.id, args.value),
-      setChannelMute: () => d.setChannelMute(args.channel ?? args.id, args.on ?? args.value),
-      setChannelPan: () => d.setChannelPan(args.channel ?? args.id, args.value),
-      setChannelGain: () => d.setChannelGain?.(args.channel ?? args.id, args.value),
-      setChannelPhantom: () => d.setChannelPhantom?.(args.channel ?? args.id, args.on ?? args.value),
-      setChannelPolarity: () => d.setChannelPolarity?.(args.channel ?? args.id, args.on ?? args.value),
-      setChannelEqBand: () => d.setChannelEqBand?.(args.channel ?? args.id, args.band, args),
+      setChannelFader: () => d.setChannelFader(id, value),
+      setChannelMute: () => d.setChannelMute(id, boolValue),
+      setChannelPan: () => d.setChannelPan(id, value),
+      setChannelGain: () => d.setChannelGain?.(id, value),
+      setChannelPhantom: () => d.setChannelPhantom?.(id, boolValue),
+      setChannelPolarity: () => d.setChannelPolarity?.(id, boolValue),
+      setChannelHpf: () => d.setChannelHpf?.(id, args.frequency ?? value),
+      setChannelEqBand: () => d.setChannelEqBand?.(id, args.band, args),
       setBusSend: () => d.setBusSend?.(args.channel, args.bus, args),
-      setBusFader: () => d.setBusFader?.(args.bus, args.value),
-      setBusMute: () => d.setBusMute?.(args.bus, args.on ?? args.value),
-      setMatrixFader: () => d.setMatrixFader?.(args.matrix, args.value),
-      setDcaFader: () => d.setDcaFader?.(args.dca, args.value),
-      setDcaMute: () => d.setDcaMute?.(args.dca, args.on ?? args.value),
-      setMainFader: () => d.setMainFader?.(args.value),
-      setMainMute: () => d.setMainMute?.(args.on ?? args.value),
-      setMonoFader: () => d.setMonoFader?.(args.value),
+      setBusFader: () => d.setBusFader?.(args.bus, value),
+      setBusMute: () => d.setBusMute?.(args.bus, boolValue),
+      setMatrixFader: () => d.setMatrixFader?.(args.matrix, value),
+      setDcaFader: () => d.setDcaFader?.(args.dca, value),
+      setDcaMute: () => d.setDcaMute?.(args.dca, boolValue),
+      setMainFader: () => d.setMainFader?.(value),
+      setMainMute: () => d.setMainMute?.(boolValue),
+      setMonoFader: () => d.setMonoFader?.(value),
       setParam: () => d.setParam(args.address, ...(Array.isArray(args.args) ? args.args : [])),
     };
-    if (!map[action]) throw new Error(`Desteklenmeyen komut: ${action}`);
-    const result = map[action]();
+
+    const fn = map[action];
+    if (!fn) throw new Error(`Desteklenmeyen komut: ${action}`);
+    const result = fn();
     if (result === undefined) throw new Error(`Komut ${action} mevcut driver tarafından desteklenmiyor`);
     return result;
   }
