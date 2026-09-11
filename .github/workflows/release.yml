@@ -15,31 +15,63 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Check Node
+
+      - name: Verify Node project
         run: |
           npm install
           npm run check
           npm test
+          npm run package:source
+
       - name: Setup JDK
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
+
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
+
       - name: Install Android SDK
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
       - name: Install Gradle
         uses: gradle/actions/setup-gradle@v4
+
+      - name: Prepare signing keystore
+        if: ${{ secrets.STAGEPULSE_KEYSTORE_BASE64 != '' }}
+        env:
+          STAGEPULSE_KEYSTORE_BASE64: ${{ secrets.STAGEPULSE_KEYSTORE_BASE64 }}
+        run: |
+          echo "$STAGEPULSE_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/stagepulse-release.keystore"
+          echo "STAGEPULSE_KEYSTORE_PATH=$RUNNER_TEMP/stagepulse-release.keystore" >> "$GITHUB_ENV"
+          echo "STAGEPULSE_KEYSTORE_PASSWORD=${{ secrets.STAGEPULSE_KEYSTORE_PASSWORD }}" >> "$GITHUB_ENV"
+          echo "STAGEPULSE_KEY_ALIAS=${{ secrets.STAGEPULSE_KEY_ALIAS }}" >> "$GITHUB_ENV"
+          echo "STAGEPULSE_KEY_PASSWORD=${{ secrets.STAGEPULSE_KEY_PASSWORD }}" >> "$GITHUB_ENV"
+
       - name: Build release APK
         working-directory: android
         run: gradle :app:assembleRelease --no-daemon
+
+      - name: Verify APK signature state
+        run: |
+          APK=$(find android/app/build/outputs/apk/release -name '*.apk' -print -quit)
+          test -n "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$APK" || true
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: StagePulseMix-release
           path: android/app/build/outputs/apk/release/*.apk
+
+      - name: Upload source package
+        uses: actions/upload-artifact@v4
+        with:
+          name: StagePulseMix-source
+          path: dist/StagePulseMix-source.zip
