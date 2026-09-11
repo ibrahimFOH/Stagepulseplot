@@ -5,30 +5,24 @@ import android.os.Bundle;
 import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.HorizontalScrollView;
 import android.widget.LinearLayout;
-import android.widget.ScrollView;
 import android.widget.SeekBar;
 import android.widget.TextView;
-import android.widget.Toast;
-import android.content.SharedPreferences;
 import java.util.Locale;
 
 public class MainActivity extends Activity {
   private MixerUdpService udp;
-  private SharedPreferences prefs;
   private LinearLayout channelList;
   private TextView status;
 
   @Override public void onCreate(Bundle b) {
     super.onCreate(b);
     buildUi();
-    prefs = getSharedPreferences("stagepulsemix", MODE_PRIVATE);
-    EditText host = findViewById(1001);
-    host.setText(prefs.getString("host", "192.168.1.100"));
     udp = new MixerUdpService();
     udp.setListener(new MixerUdpService.Listener() {
       @Override public void onPacket(String address, Object[] args) {
-        runOnUiThread(() -> status.setText("RX " + address));
+        runOnUiThread(() -> handleFeedback(address, args));
       }
       @Override public void onError(Exception error) {
         runOnUiThread(() -> status.setText("Hata: " + error.getMessage()));
@@ -46,24 +40,25 @@ public class MainActivity extends Activity {
   private void buildUi() {
     LinearLayout root = new LinearLayout(this);
     root.setOrientation(LinearLayout.VERTICAL);
-    LinearLayout top = new LinearLayout(this);
-    top.setPadding(8,8,8,8);
+    root.setPadding(dp(8), dp(8), dp(8), dp(8));
 
+    LinearLayout top = new LinearLayout(this);
+    top.setOrientation(LinearLayout.HORIZONTAL);
     EditText host = new EditText(this);
     host.setId(1001);
+    host.setSingleLine(true);
     host.setHint("X32 / M32 IP");
-    top.addView(host, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
-
+    top.addView(host, new LinearLayout.LayoutParams(0, dp(48), 1));
     Button connect = new Button(this);
     connect.setText("BAĞLAN");
-    top.addView(connect, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-
+    top.addView(connect, new LinearLayout.LayoutParams(dp(120), dp(48)));
     status = new TextView(this);
     status.setText("Bağlantı yok");
-    top.addView(status, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+    status.setPadding(dp(8), 0, 0, 0);
+    top.addView(status, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(48)));
     root.addView(top);
 
-    ScrollView scroll = new ScrollView(this);
+    HorizontalScrollView scroll = new HorizontalScrollView(this);
     channelList = new LinearLayout(this);
     channelList.setOrientation(LinearLayout.HORIZONTAL);
     scroll.addView(channelList);
@@ -71,22 +66,38 @@ public class MainActivity extends Activity {
     setContentView(root);
 
     for (int i = 1; i <= 32; i++) addChannel(i);
-    connect.setOnClickListener(v -> connectToMixer());
+
+    connect.setOnClickListener(v -> {
+      String h = host.getText().toString().trim();
+      if (h.isEmpty()) { status.setText("X32/M32 IP gerekli"); return; }
+      getSharedPreferences("stagepulsemix", MODE_PRIVATE).edit().putString("host", h).apply();
+      udp.connect(h, 10023, 0);
+    });
+    String saved = getSharedPreferences("stagepulsemix", MODE_PRIVATE).getString("host", "");
+    host.setText(saved);
   }
 
   private void addChannel(int ch) {
     LinearLayout strip = new LinearLayout(this);
     strip.setOrientation(LinearLayout.VERTICAL);
-    strip.setPadding(6,6,6,6);
-    strip.setLayoutParams(new LinearLayout.LayoutParams(dp(92), ViewGroup.LayoutParams.MATCH_PARENT));
+    strip.setPadding(dp(5), dp(5), dp(5), dp(5));
+    strip.setLayoutParams(new LinearLayout.LayoutParams(dp(96), ViewGroup.LayoutParams.MATCH_PARENT));
 
     TextView label = new TextView(this);
     label.setText(String.format(Locale.US, "CH %02d", ch));
-    strip.addView(label);
+    label.setGravity(17);
+    strip.addView(label, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(32)));
+
+    TextView meter = new TextView(this);
+    meter.setText("-∞");
+    meter.setGravity(17);
+    meter.setTag("meter");
+    strip.addView(meter, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(26)));
 
     TextView value = new TextView(this);
     value.setText("0.0 dB");
-    strip.addView(value);
+    value.setGravity(17);
+    strip.addView(value, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(26)));
 
     SeekBar fader = new SeekBar(this);
     fader.setMax(1000);
@@ -98,21 +109,21 @@ public class MainActivity extends Activity {
       }
       @Override public void onStartTrackingTouch(SeekBar bar) {}
       @Override public void onStopTrackingTouch(SeekBar bar) {
-        float db = (float)(-90.0 + bar.getProgress() * 0.1);
-        sendFader(ch, db);
+        float normalized = bar.getProgress() / 1000f;
+        send("/ch/" + String.format(Locale.US, "%02d", ch) + "/fdr", normalized);
       }
     });
-    strip.addView(fader, new LinearLayout.LayoutParams(dp(82), dp(220)));
+    strip.addView(fader, new LinearLayout.LayoutParams(dp(88), dp(220)));
 
     Button mute = new Button(this);
     mute.setText("M");
     mute.setOnClickListener(v -> {
-      boolean on = !Boolean.TRUE.equals(mute.getTag());
-      mute.setTag(on);
-      mute.setText(on ? "MUTE" : "M");
-      send("/ch/" + String.format(Locale.US, "%02d", ch) + "/mix/on", !on);
+      boolean muted = !Boolean.TRUE.equals(mute.getTag());
+      mute.setTag(muted);
+      mute.setText(muted ? "MUTE" : "M");
+      send("/ch/" + String.format(Locale.US, "%02d", ch) + "/mix/on", muted ? 0 : 1);
     });
-    strip.addView(mute);
+    strip.addView(mute, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(42)));
 
     Button solo = new Button(this);
     solo.setText("S");
@@ -120,35 +131,43 @@ public class MainActivity extends Activity {
       boolean on = !Boolean.TRUE.equals(solo.getTag());
       solo.setTag(on);
       solo.setText(on ? "SOLO" : "S");
-      send("/ch/" + String.format(Locale.US, "%02d", ch) + "/mix/solo", on);
+      send("/ch/" + String.format(Locale.US, "%02d", ch) + "/mix/solo", on ? 1 : 0);
     });
-    strip.addView(solo);
+    strip.addView(solo, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(42)));
+
     channelList.addView(strip);
   }
 
-  private void connectToMixer() {
-    EditText host = findViewById(1001);
-    String h = host.getText().toString().trim();
-    if (h.isEmpty()) { toast("IP gerekli"); return; }
-    prefs.edit().putString("host", h).apply();
-    udp.connect(h, 10023, 0);
+  private void handleFeedback(String address, Object[] args) {
+    status.setText("RX " + address);
+    if (address.matches("/ch/[0-9]{2}/fdr") && args.length > 0 && args[0] instanceof Number) {
+      int ch = Integer.parseInt(address.substring(4, 6));
+      if (ch >= 1 && ch <= channelList.getChildCount()) {
+        LinearLayout strip = (LinearLayout) channelList.getChildAt(ch - 1);
+        SeekBar fader = findSeekBar(strip);
+        if (fader != null) fader.setProgress(Math.max(0, Math.min(1000, Math.round(((Number)args[0]).floatValue() * 1000))));
+      }
+    }
+  }
+
+  private SeekBar findSeekBar(ViewGroup root) {
+    for (int i = 0; i < root.getChildCount(); i++) {
+      if (root.getChildAt(i) instanceof SeekBar) return (SeekBar) root.getChildAt(i);
+    }
+    return null;
   }
 
   private void refreshSurface() {
+    send("/xremote");
+    send("/info");
+    send("/status");
+    send("/config");
     send("/-stat/chfaderbank");
     send("/-stat/grpfaderbank");
     send("/-stat/sendsonfader");
-    send("/config");
-    send("/status");
-    send("/info");
     send("/meters", "/meters/6", 1);
     send("/meters", "/meters/7", 1);
     send("/meters", "/meters/12", 1);
-  }
-
-  private void sendFader(int ch, float db) {
-    float normalized = Math.max(0f, Math.min(1f, (db + 90f) / 100f));
-    send("/ch/" + String.format(Locale.US, "%02d", ch) + "/fdr", normalized);
   }
 
   private void send(String address, Object... args) {
@@ -156,7 +175,6 @@ public class MainActivity extends Activity {
     catch (Exception e) { status.setText("TX hata: " + e.getMessage()); }
   }
 
-  private void toast(String s) { Toast.makeText(this, s, Toast.LENGTH_SHORT).show(); }
   private int dp(int v) { return (int)(v * getResources().getDisplayMetrics().density + 0.5f); }
 
   @Override protected void onDestroy() {
