@@ -33,18 +33,26 @@ public final class MixerUdpService {
   private volatile boolean running;
   private volatile long lastRxMs;
   private Listener listener;
+  private long generation = 0;
 
   public void setListener(Listener listener) { this.listener = listener; }
 
   public synchronized void connect(String host, int port, int localPort) {
     shutdownSocket();
+    final long connectionGeneration = ++generation;
     io.execute(() -> {
       try {
-        target = InetAddress.getByName(host);
-        targetPort = port > 0 ? port : 10023;
-        socket = localPort > 0 ? new DatagramSocket(localPort) : new DatagramSocket();
-        socket.setSoTimeout(1000);
-        running = true;
+        InetAddress resolved = InetAddress.getByName(host);
+        DatagramSocket newSocket = localPort > 0 ? new DatagramSocket(localPort) : new DatagramSocket();
+        newSocket.setSoTimeout(1000);
+        synchronized (this) {
+          if (connectionGeneration != generation) { newSocket.close(); return; }
+          target = resolved;
+          targetPort = port > 0 ? port : 10023;
+          socket = newSocket;
+          running = true;
+          lastRxMs = 0L;
+        }
         send("/xremote");
         send("/info");
         send("/status");
@@ -52,44 +60,53 @@ public final class MixerUdpService {
         send("/-stat/chfaderbank");
         send("/-stat/grpfaderbank");
         send("/-stat/sendsonfader");
+        send("/meters", "/meters/0", 1);
         send("/meters", "/meters/6", 1);
         send("/meters", "/meters/7", 1);
         send("/meters", "/meters/12", 1);
         postConnected();
         io.scheduleWithFixedDelay(() -> {
-          if (!running) return;
-          try { send("/xremote"); } catch (Exception e) { postError(e); }
-        }, 8, 8, TimeUnit.SECONDS);
-        io.execute(this::receiveLoop);
+          if (!running || connectionGeneration != generation) return;
+          try {
+            send("/xremote");
+            long rx = lastRxMs;
+            if (rx != 0L && System.currentTimeMillis() - rx > 12000L) {
+              main.post(() -> { if (listener != null) listener.onError(new IOException("Mikser feedback zaman aşımı")); });
+            }
+          } catch (Exception e) { postError(e); }
+        }, 6, 6, TimeUnit.SECONDS);
+        io.execute(() -> receiveLoop(connectionGeneration));
       } catch (Exception e) {
         postError(e);
-        shutdownSocket();
+        synchronized (this) {
+          if (connectionGeneration == generation) shutdownSocketLocked();
+        }
       }
     });
   }
 
-  private void receiveLoop() {
+  private void receiveLoop(long connectionGeneration) {
     try {
       byte[] buffer = new byte[65535];
-      while (running) {
+      while (running && connectionGeneration == generation) {
         try {
           DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
-          socket.receive(packet);
+          DatagramSocket active = socket;
+          if (active == null) break;
+          active.receive(packet);
           List<OscPacket> decoded = decodePackets(packet.getData(), packet.getOffset(), packet.getLength());
           lastRxMs = System.currentTimeMillis();
           for (OscPacket p : decoded) {
             final String address = p.address;
             final Object[] args = p.args;
-            main.post(() -> {
-              if (listener != null) listener.onPacket(address, args);
-            });
+            main.post(() -> { if (listener != null) listener.onPacket(address, args); });
           }
         } catch (java.net.SocketTimeoutException ignored) { }
       }
     } catch (Exception e) {
-      if (running) postError(e);
+      if (running && connectionGeneration == generation) postError(e);
     } finally {
-      if (running) {
+      if (running && connectionGeneration == generation) {
         running = false;
         main.post(() -> { if (listener != null) listener.onDisconnected(); });
       }
@@ -100,9 +117,7 @@ public final class MixerUdpService {
     DatagramSocket s;
     InetAddress t;
     int p;
-    synchronized (this) {
-      s = socket; t = target; p = targetPort;
-    }
+    synchronized (this) { s = socket; t = target; p = targetPort; }
     if (!running || s == null || t == null) throw new IOException("Mikser bağlantısı yok");
     byte[] data = encode(address, args);
     s.send(new DatagramPacket(data, data.length, t, p));
@@ -112,18 +127,17 @@ public final class MixerUdpService {
   public long getLastRxMs() { return lastRxMs; }
 
   public synchronized void shutdownSocket() {
+    generation++;
+    shutdownSocketLocked();
+  }
+
+  private void shutdownSocketLocked() {
     running = false;
-    if (socket != null) {
-      socket.close();
-      socket = null;
-    }
+    if (socket != null) { socket.close(); socket = null; }
     target = null;
   }
 
-  public void shutdown() {
-    shutdownSocket();
-    io.shutdownNow();
-  }
+  public void shutdown() { shutdownSocket(); io.shutdownNow(); }
 
   private void postConnected() { main.post(() -> { if (listener != null) listener.onConnected(); }); }
   private void postError(Exception e) { main.post(() -> { if (listener != null) listener.onError(e); }); }
@@ -133,14 +147,14 @@ public final class MixerUdpService {
     StringBuilder tags = new StringBuilder(",");
     for (Object arg : args) {
       if (arg instanceof String) tags.append('s');
-      else if (arg instanceof Boolean) tags.append(((Boolean) arg) ? 'T' : 'F');
+      else if (arg instanceof Boolean) tags.append(((Boolean)arg) ? 'T' : 'F');
       else if (arg instanceof Byte || arg instanceof Short || arg instanceof Integer || arg instanceof Long) tags.append('i');
       else if (arg instanceof Number) tags.append('f');
       else throw new IllegalArgumentException("Unsupported OSC argument");
     }
     byte[] t = oscString(tags.toString());
     int size = a.length + t.length;
-    for (Object arg : args) size += arg instanceof String ? oscString((String) arg).length : (arg instanceof Boolean ? 0 : 4);
+    for (Object arg : args) size += arg instanceof String ? oscString((String)arg).length : (arg instanceof Boolean ? 0 : 4);
     ByteBuffer out = ByteBuffer.allocate(size).order(ByteOrder.BIG_ENDIAN);
     out.put(a).put(t);
     for (Object arg : args) {
@@ -149,7 +163,9 @@ public final class MixerUdpService {
       else if (arg instanceof Byte || arg instanceof Short || arg instanceof Integer || arg instanceof Long) out.putInt(((Number)arg).intValue());
       else out.putFloat(((Number)arg).floatValue());
     }
-    byte[] result = new byte[out.position()]; out.flip(); out.get(result); return result;
+    byte[] result = new byte[out.position()];
+    out.flip(); out.get(result);
+    return result;
   }
 
   private static byte[] oscString(String value) {
@@ -183,11 +199,7 @@ public final class MixerUdpService {
         case 'f': args.add(c.readFloat()); break;
         case 'T': args.add(Boolean.TRUE); break;
         case 'F': args.add(Boolean.FALSE); break;
-        case 'b':
-          int n = c.readInt();
-          args.add(c.readBytes(n));
-          c.align4();
-          break;
+        case 'b': int n = c.readInt(); args.add(c.readBytes(n)); c.align4(); break;
         default: return new ArrayList<>();
       }
     }
@@ -198,26 +210,26 @@ public final class MixerUdpService {
 
   private static final class Cursor {
     final byte[] b; final int end; int pos;
-    Cursor(byte[] b, int offset, int length) { this.b = b; this.pos = offset; this.end = offset + length; }
-    int remaining() { return end - pos; }
-    void skip(int n) { if (n < 0 || pos + n > end) throw new IllegalArgumentException(); pos += n; }
-    void align4() { pos = (pos + 3) & ~3; if (pos > end) throw new IllegalArgumentException(); }
+    Cursor(byte[] b, int offset, int length) { this.b=b; this.pos=offset; this.end=offset+length; }
+    int remaining() { return end-pos; }
+    void skip(int n) { if (n < 0 || pos+n > end) throw new IllegalArgumentException(); pos += n; }
+    void align4() { pos=(pos+3)&~3; if (pos>end) throw new IllegalArgumentException(); }
     String readString() {
-      int p = pos;
-      while (p < end && b[p] != 0) p++;
-      if (p >= end) throw new IllegalArgumentException();
-      String s = new String(b, pos, p - pos, StandardCharsets.UTF_8);
-      pos = (p + 4) & ~3;
-      if (pos > end) throw new IllegalArgumentException();
+      int p=pos;
+      while (p<end && b[p]!=0) p++;
+      if (p>=end) throw new IllegalArgumentException();
+      String s=new String(b,pos,p-pos,StandardCharsets.UTF_8);
+      pos=(p+4)&~3;
+      if (pos>end) throw new IllegalArgumentException();
       return s;
     }
-    int readInt() { if (pos + 4 > end) throw new IllegalArgumentException(); int v = ByteBuffer.wrap(b,pos,4).order(ByteOrder.BIG_ENDIAN).getInt(); pos += 4; return v; }
-    float readFloat() { if (pos + 4 > end) throw new IllegalArgumentException(); float v = ByteBuffer.wrap(b,pos,4).order(ByteOrder.BIG_ENDIAN).getFloat(); pos += 4; return v; }
-    byte[] readBytes(int n) { if (n < 0 || pos + n > end) throw new IllegalArgumentException(); byte[] out = new byte[n]; System.arraycopy(b,pos,out,0,n); pos += n; return out; }
+    int readInt() { if(pos+4>end) throw new IllegalArgumentException(); int v=ByteBuffer.wrap(b,pos,4).order(ByteOrder.BIG_ENDIAN).getInt(); pos+=4; return v; }
+    float readFloat() { if(pos+4>end) throw new IllegalArgumentException(); float v=ByteBuffer.wrap(b,pos,4).order(ByteOrder.BIG_ENDIAN).getFloat(); pos+=4; return v; }
+    byte[] readBytes(int n) { if(n<0 || pos+n>end) throw new IllegalArgumentException(); byte[] out=new byte[n]; System.arraycopy(b,pos,out,0,n); pos+=n; return out; }
   }
 
   private static final class OscPacket {
     final String address; final Object[] args;
-    OscPacket(String address, Object[] args) { this.address = address; this.args = args; }
+    OscPacket(String address, Object[] args) { this.address=address; this.args=args; }
   }
 }
