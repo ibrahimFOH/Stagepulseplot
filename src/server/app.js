@@ -14,10 +14,7 @@ const clients = new Set();
 
 const json = (res, code, body) => {
   const b = Buffer.from(JSON.stringify(body));
-  res.writeHead(code, {
-    'content-type': 'application/json; charset=utf-8',
-    'content-length': b.length,
-  });
+  res.writeHead(code, { 'content-type': 'application/json; charset=utf-8', 'content-length': b.length });
   res.end(b);
 };
 
@@ -28,29 +25,43 @@ const broadcast = () => {
 };
 
 function attachDriverEvents(d) {
-  d.on?.('connected', () => { state.setConnection({ status: 'connected', vendor: d.vendor || 'midas', model: d.model || 'M32' }); broadcast(); });
+  d.on?.('connected', () => {
+    state.setConnection({ status: 'connected', vendor: d.vendor || 'midas', model: d.model || 'M32' });
+    broadcast();
+  });
   d.on?.('disconnected', () => { state.setConnection({ status: 'disconnected' }); broadcast(); });
-  d.on?.('feedback', (packet) => { state.data.rawFeedback.push({ timestamp: Date.now(), ...packet }); if (state.data.rawFeedback.length > 5000) state.data.rawFeedback.shift(); broadcast(); });
-  d.on?.('protocolError', (error) => { state.setConnection({ status: 'protocol-error', error: error.message }); broadcast(); });
+  d.on?.('feedback', (packet) => {
+    state.data.rawFeedback.push({ timestamp: Date.now(), ...packet });
+    if (state.data.rawFeedback.length > 5000) state.data.rawFeedback.shift();
+    broadcast();
+  });
+  d.on?.('protocolError', (error) => {
+    state.setConnection({ status: 'protocol-error', error: error.message });
+    broadcast();
+  });
+  d.on?.('error', (error) => {
+    state.setConnection({ status: 'error', error: error.message });
+    broadcast();
+  });
 }
 
 const commands = {
   setChannelFader: (d, c) => d.setChannelFader(c.channel ?? c.id, c.value),
   setChannelMute: (d, c) => d.setChannelMute(c.channel ?? c.id, c.on ?? c.value),
   setChannelPan: (d, c) => d.setChannelPan(c.channel ?? c.id, c.value),
-  setChannelGain: (d, c) => d.setChannelGain?.(c.channel ?? c.id, c.value),
-  setChannelPhantom: (d, c) => d.setChannelPhantom?.(c.channel ?? c.id, c.on ?? c.value),
-  setChannelPolarity: (d, c) => d.setChannelPolarity?.(c.channel ?? c.id, c.on ?? c.value),
-  setChannelEqBand: (d, c) => d.setChannelEqBand?.(c.channel ?? c.id, c.band, c),
-  setBusSend: (d, c) => d.setBusSend?.(c.channel, c.bus, c),
-  setBusFader: (d, c) => d.setBusFader?.(c.bus, c.value),
-  setBusMute: (d, c) => d.setBusMute?.(c.bus, c.on ?? c.value),
-  setMatrixFader: (d, c) => d.setMatrixFader?.(c.matrix, c.value),
-  setDcaFader: (d, c) => d.setDcaFader?.(c.dca, c.value),
-  setDcaMute: (d, c) => d.setDcaMute?.(c.dca, c.on ?? c.value),
-  setMainFader: (d, c) => d.setMainFader?.(c.value),
-  setMainMute: (d, c) => d.setMainMute?.(c.on ?? c.value),
-  setMonoFader: (d, c) => d.setMonoFader?.(c.value),
+  setChannelGain: (d, c) => d.setChannelGain(c.channel ?? c.id, c.value),
+  setChannelPhantom: (d, c) => d.setChannelPhantom(c.channel ?? c.id, c.on ?? c.value),
+  setChannelPolarity: (d, c) => d.setChannelPolarity(c.channel ?? c.id, c.on ?? c.value),
+  setChannelEqBand: (d, c) => d.setChannelEqBand(c.channel ?? c.id, c.band, c),
+  setBusSend: (d, c) => d.setBusSend(c.channel, c.bus, c),
+  setBusFader: (d, c) => d.setBusFader(c.bus, c.value),
+  setBusMute: (d, c) => d.setBusMute(c.bus, c.on ?? c.value),
+  setMatrixFader: (d, c) => d.setMatrixFader(c.matrix, c.value),
+  setDcaFader: (d, c) => d.setDcaFader(c.dca, c.value),
+  setDcaMute: (d, c) => d.setDcaMute(c.dca, c.on ?? c.value),
+  setMainFader: (d, c) => d.setMainFader(c.value),
+  setMainMute: (d, c) => d.setMainMute(c.on ?? c.value),
+  setMonoFader: (d, c) => d.setMonoFader(c.value),
   setParam: (d, c) => d.setParam(c.address, ...(Array.isArray(c.args) ? c.args : [])),
 };
 
@@ -85,7 +96,7 @@ async function handle(req, res) {
       const vendor = c.vendor || 'midas';
       if (vendor === 'midas') {
         state.resetMidas(c.channelCount || 40);
-        driver = new M32Driver({ host: c.host, port: Number(c.port) || 10023, localPort: Number(c.localPort) || 10024, model: c.model || 'M32' });
+        driver = new M32Driver({ host: c.host, port: Number(c.port) || 10023, localPort: Number(c.localPort) || 10024, refreshMs: Number(c.refreshMs) || 9000 });
       } else {
         driver = new AllenHeathDriver(c);
       }
