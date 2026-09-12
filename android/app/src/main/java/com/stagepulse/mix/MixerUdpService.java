@@ -33,12 +33,12 @@ public final class MixerUdpService {
   private volatile boolean running;
   private volatile long lastRxMs;
   private Listener listener;
-  private long generation = 0;
+  private long generation;
 
   public void setListener(Listener listener) { this.listener = listener; }
 
   public synchronized void connect(String host, int port, int localPort) {
-    shutdownSocket();
+    shutdownSocketLocked(true);
     final long connectionGeneration = ++generation;
     io.execute(() -> {
       try {
@@ -71,15 +71,15 @@ public final class MixerUdpService {
             send("/xremote");
             long rx = lastRxMs;
             if (rx != 0L && System.currentTimeMillis() - rx > 12000L) {
-              main.post(() -> { if (listener != null) listener.onError(new IOException("Mikser feedback zaman aşımı")); });
+              postError(new IOException("Mikser feedback zaman aşımı"));
             }
           } catch (Exception e) { postError(e); }
-        }, 6, 6, TimeUnit.SECONDS);
+        }, 5, 5, TimeUnit.SECONDS);
         io.execute(() -> receiveLoop(connectionGeneration));
       } catch (Exception e) {
         postError(e);
         synchronized (this) {
-          if (connectionGeneration == generation) shutdownSocketLocked();
+          if (connectionGeneration == generation) shutdownSocketLocked(false);
         }
       }
     });
@@ -117,119 +117,108 @@ public final class MixerUdpService {
     DatagramSocket s;
     InetAddress t;
     int p;
-    synchronized (this) { s = socket; t = target; p = targetPort; }
-    if (!running || s == null || t == null) throw new IOException("Mikser bağlantısı yok");
-    byte[] data = encode(address, args);
-    s.send(new DatagramPacket(data, data.length, t, p));
+    synchronized (this) { s=socket; t=target; p=targetPort; }
+    if (!running || s==null || t==null) throw new IOException("Mikser bağlantısı yok");
+    byte[] data=encode(address,args);
+    s.send(new DatagramPacket(data,data.length,t,p));
   }
 
   public boolean isConnected() { return running; }
   public long getLastRxMs() { return lastRxMs; }
 
-  public synchronized void shutdownSocket() {
-    generation++;
-    shutdownSocketLocked();
-  }
+  public synchronized void shutdownSocket() { shutdownSocketLocked(true); generation++; }
 
-  private void shutdownSocketLocked() {
-    running = false;
-    if (socket != null) { socket.close(); socket = null; }
-    target = null;
+  private void shutdownSocketLocked(boolean bumpGeneration) {
+    running=false;
+    if (bumpGeneration) generation++;
+    if (socket!=null) { socket.close(); socket=null; }
+    target=null;
   }
 
   public void shutdown() { shutdownSocket(); io.shutdownNow(); }
 
-  private void postConnected() { main.post(() -> { if (listener != null) listener.onConnected(); }); }
-  private void postError(Exception e) { main.post(() -> { if (listener != null) listener.onError(e); }); }
+  private void postConnected() { main.post(() -> { if(listener!=null) listener.onConnected(); }); }
+  private void postError(Exception e) { main.post(() -> { if(listener!=null) listener.onError(e); }); }
 
   private static byte[] encode(String address, Object[] args) {
-    byte[] a = oscString(address);
-    StringBuilder tags = new StringBuilder(",");
-    for (Object arg : args) {
-      if (arg instanceof String) tags.append('s');
-      else if (arg instanceof Boolean) tags.append(((Boolean)arg) ? 'T' : 'F');
-      else if (arg instanceof Byte || arg instanceof Short || arg instanceof Integer || arg instanceof Long) tags.append('i');
-      else if (arg instanceof Number) tags.append('f');
+    byte[] a=oscString(address);
+    StringBuilder tags=new StringBuilder(",");
+    for(Object arg:args){
+      if(arg instanceof String) tags.append('s');
+      else if(arg instanceof Boolean) tags.append(((Boolean)arg)?'T':'F');
+      else if(arg instanceof Byte || arg instanceof Short || arg instanceof Integer || arg instanceof Long) tags.append('i');
+      else if(arg instanceof Number) tags.append('f');
+      else if(arg instanceof byte[]) tags.append('b');
       else throw new IllegalArgumentException("Unsupported OSC argument");
     }
-    byte[] t = oscString(tags.toString());
-    int size = a.length + t.length;
-    for (Object arg : args) size += arg instanceof String ? oscString((String)arg).length : (arg instanceof Boolean ? 0 : 4);
-    ByteBuffer out = ByteBuffer.allocate(size).order(ByteOrder.BIG_ENDIAN);
+    byte[] t=oscString(tags.toString());
+    int size=a.length+t.length;
+    for(Object arg:args){
+      if(arg instanceof String) size+=oscString((String)arg).length;
+      else if(arg instanceof Boolean) {}
+      else if(arg instanceof byte[]){ int n=((byte[])arg).length; size+=4+((n+3)&~3); }
+      else size+=4;
+    }
+    ByteBuffer out=ByteBuffer.allocate(size).order(ByteOrder.BIG_ENDIAN);
     out.put(a).put(t);
-    for (Object arg : args) {
-      if (arg instanceof String) out.put(oscString((String)arg));
-      else if (arg instanceof Boolean) { }
-      else if (arg instanceof Byte || arg instanceof Short || arg instanceof Integer || arg instanceof Long) out.putInt(((Number)arg).intValue());
+    for(Object arg:args){
+      if(arg instanceof String) out.put(oscString((String)arg));
+      else if(arg instanceof Boolean) {}
+      else if(arg instanceof byte[]){ byte[] raw=(byte[])arg; out.putInt(raw.length); out.put(raw); while((out.position()&3)!=0) out.put((byte)0); }
+      else if(arg instanceof Byte || arg instanceof Short || arg instanceof Integer || arg instanceof Long) out.putInt(((Number)arg).intValue());
       else out.putFloat(((Number)arg).floatValue());
     }
-    byte[] result = new byte[out.position()];
-    out.flip(); out.get(result);
-    return result;
+    byte[] result=new byte[out.position()]; out.flip(); out.get(result); return result;
   }
 
-  private static byte[] oscString(String value) {
-    byte[] raw = value.getBytes(StandardCharsets.UTF_8);
-    int size = (raw.length + 1 + 3) & ~3;
-    byte[] out = new byte[size];
-    System.arraycopy(raw, 0, out, 0, raw.length);
+  private static byte[] oscString(String value){
+    byte[] raw=value.getBytes(StandardCharsets.UTF_8);
+    int size=(raw.length+1+3)&~3;
+    byte[] out=new byte[size];
+    System.arraycopy(raw,0,out,0,raw.length);
     return out;
   }
 
-  private static List<OscPacket> decodePackets(byte[] packet, int offset, int length) {
-    Cursor c = new Cursor(packet, offset, length);
-    String address = c.readString();
-    if ("#bundle".equals(address)) {
+  private static List<OscPacket> decodePackets(byte[] packet,int offset,int length){
+    Cursor c=new Cursor(packet,offset,length);
+    String address=c.readString();
+    if("#bundle".equals(address)){
       c.skip(8);
-      List<OscPacket> result = new ArrayList<>();
-      while (c.remaining() >= 4) {
-        int size = c.readInt();
-        if (size <= 0 || size > c.remaining()) break;
-        result.addAll(decodePackets(c.readBytes(size), 0, size));
+      List<OscPacket> result=new ArrayList<>();
+      while(c.remaining()>=4){
+        int size=c.readInt();
+        if(size<=0 || size>c.remaining()) break;
+        result.addAll(decodePackets(c.readBytes(size),0,size));
       }
       return result;
     }
-    String tags = c.readString();
-    if (!tags.startsWith(",")) return new ArrayList<>();
-    List<Object> args = new ArrayList<>();
-    for (int i = 1; i < tags.length(); i++) {
-      switch (tags.charAt(i)) {
+    String tags=c.readString();
+    if(!tags.startsWith(",")) return new ArrayList<>();
+    List<Object> args=new ArrayList<>();
+    for(int i=1;i<tags.length();i++){
+      switch(tags.charAt(i)){
         case 's': args.add(c.readString()); break;
         case 'i': args.add(c.readInt()); break;
         case 'f': args.add(c.readFloat()); break;
         case 'T': args.add(Boolean.TRUE); break;
         case 'F': args.add(Boolean.FALSE); break;
-        case 'b': int n = c.readInt(); args.add(c.readBytes(n)); c.align4(); break;
+        case 'b': int n=c.readInt(); args.add(c.readBytes(n)); c.align4(); break;
         default: return new ArrayList<>();
       }
     }
-    List<OscPacket> one = new ArrayList<>();
-    one.add(new OscPacket(address, args.toArray()));
-    return one;
+    List<OscPacket> one=new ArrayList<>(); one.add(new OscPacket(address,args.toArray())); return one;
   }
 
   private static final class Cursor {
     final byte[] b; final int end; int pos;
-    Cursor(byte[] b, int offset, int length) { this.b=b; this.pos=offset; this.end=offset+length; }
-    int remaining() { return end-pos; }
-    void skip(int n) { if (n < 0 || pos+n > end) throw new IllegalArgumentException(); pos += n; }
-    void align4() { pos=(pos+3)&~3; if (pos>end) throw new IllegalArgumentException(); }
-    String readString() {
-      int p=pos;
-      while (p<end && b[p]!=0) p++;
-      if (p>=end) throw new IllegalArgumentException();
-      String s=new String(b,pos,p-pos,StandardCharsets.UTF_8);
-      pos=(p+4)&~3;
-      if (pos>end) throw new IllegalArgumentException();
-      return s;
-    }
-    int readInt() { if(pos+4>end) throw new IllegalArgumentException(); int v=ByteBuffer.wrap(b,pos,4).order(ByteOrder.BIG_ENDIAN).getInt(); pos+=4; return v; }
-    float readFloat() { if(pos+4>end) throw new IllegalArgumentException(); float v=ByteBuffer.wrap(b,pos,4).order(ByteOrder.BIG_ENDIAN).getFloat(); pos+=4; return v; }
-    byte[] readBytes(int n) { if(n<0 || pos+n>end) throw new IllegalArgumentException(); byte[] out=new byte[n]; System.arraycopy(b,pos,out,0,n); pos+=n; return out; }
+    Cursor(byte[] b,int offset,int length){this.b=b;pos=offset;end=offset+length;}
+    int remaining(){return end-pos;}
+    void skip(int n){if(n<0||pos+n>end)throw new IllegalArgumentException();pos+=n;}
+    void align4(){pos=(pos+3)&~3;if(pos>end)throw new IllegalArgumentException();}
+    String readString(){int p=pos;while(p<end&&b[p]!=0)p++;if(p>=end)throw new IllegalArgumentException();String s=new String(b,pos,p-pos,StandardCharsets.UTF_8);pos=(p+4)&~3;if(pos>end)throw new IllegalArgumentException();return s;}
+    int readInt(){if(pos+4>end)throw new IllegalArgumentException();int v=ByteBuffer.wrap(b,pos,4).order(ByteOrder.BIG_ENDIAN).getInt();pos+=4;return v;}
+    float readFloat(){if(pos+4>end)throw new IllegalArgumentException();float v=ByteBuffer.wrap(b,pos,4).order(ByteOrder.BIG_ENDIAN).getFloat();pos+=4;return v;}
+    byte[] readBytes(int n){if(n<0||pos+n>end)throw new IllegalArgumentException();byte[] out=new byte[n];System.arraycopy(b,pos,out,0,n);pos+=n;return out;}
   }
-
-  private static final class OscPacket {
-    final String address; final Object[] args;
-    OscPacket(String address, Object[] args) { this.address=address; this.args=args; }
-  }
+  private static final class OscPacket { final String address; final Object[] args; OscPacket(String a,Object[] b){address=a;args=b;} }
 }
