@@ -16,11 +16,6 @@ env:
   GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx2g -Dfile.encoding=UTF-8
   PAGES_BASE_URL: https://ibrahimfoh.github.io/StagepulseMix
 
-env:
-  ANDROID_HOME: /usr/local/lib/android/sdk
-  GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx2g -Dfile.encoding=UTF-8
-  PAGES_BASE_URL: https://ibrahimfoh.github.io/StagepulseMix
-
 jobs:
   release:
     runs-on: ubuntu-latest
