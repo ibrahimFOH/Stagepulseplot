@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { decodeOscMessage, encodeOscMessage } from '../src/protocols/osc.js';
 import { createDefaultState, setByPath, cloneState } from '../src/core/state.js';
+import { M32Driver } from '../src/protocols/m32.js';
 import { M32Emulator } from '../src/protocols/m32-emulator.js';
 
  test('OSC round trip', () => {
@@ -37,9 +38,38 @@ test('cloneState is independent', () => {
   assert.equal(state.channels[0].fader, 0);
 });
 
-test('M32 emulator starts and accepts OSC', async () => {
+test('M32 driver exposes expected live surface', () => {
+  const driver = new M32Driver({ host: '127.0.0.1', port: 14023, localPort: 14024, autoRefresh: false });
+  assert.equal(driver.host, '127.0.0.1');
+  assert.equal(driver.port, 14023);
+  driver.close();
+});
+
+test('M32 emulator starts and echoes OSC state', async () => {
   const emulator = new M32Emulator({ host: '127.0.0.1', port: 14023 });
   await emulator.start();
+  emulator.set('/ch/01/fdr', 0.75);
+  await new Promise((resolve, reject) => {
+    const client = (await import('node:dgram')).createSocket('udp4');
+    const timer = setTimeout(() => { client.close(); reject(new Error('emulator response timeout')); }, 1000);
+    client.on('message', (message) => {
+      try {
+        const packet = decodeOscMessage(message);
+        assert.equal(packet.address, '/ch/01/fdr');
+        assert.equal(packet.args[0], 0.75);
+        clearTimeout(timer);
+        client.close();
+        resolve();
+      } catch (error) {
+        clearTimeout(timer);
+        client.close();
+        reject(error);
+      }
+    });
+    client.bind(14025, '127.0.0.1', () => {
+      const ping = encodeOscMessage('/node', ['/ch/01/fdr']);
+      client.send(ping, 14023, '127.0.0.1');
+    });
+  });
   emulator.close();
-  assert.ok(true);
 });
