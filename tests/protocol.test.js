@@ -1,11 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import dgram from 'node:dgram';
 import { decodeOscMessage, encodeOscMessage } from '../src/protocols/osc.js';
 import { createDefaultState, setByPath, cloneState } from '../src/core/state.js';
 import { M32Driver } from '../src/protocols/m32.js';
 import { M32Emulator } from '../src/protocols/m32-emulator.js';
 
- test('OSC round trip', () => {
+test('OSC round trip', () => {
   const packet = encodeOscMessage('/ch/01/fdr', [-12.5]);
   assert.deepEqual(decodeOscMessage(packet), { address: '/ch/01/fdr', args: [-12.5] });
 });
@@ -49,8 +50,8 @@ test('M32 emulator starts and echoes OSC state', async () => {
   const emulator = new M32Emulator({ host: '127.0.0.1', port: 14023 });
   await emulator.start();
   emulator.set('/ch/01/fdr', 0.75);
+  const client = dgram.createSocket('udp4');
   await new Promise((resolve, reject) => {
-    const client = (await import('node:dgram')).createSocket('udp4');
     const timer = setTimeout(() => { client.close(); reject(new Error('emulator response timeout')); }, 1000);
     client.on('message', (message) => {
       try {
