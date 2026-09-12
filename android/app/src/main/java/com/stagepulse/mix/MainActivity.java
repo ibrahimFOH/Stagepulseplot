@@ -3,6 +3,7 @@ package com.stagepulse.mix;
 import android.app.Activity;
 import android.os.Bundle;
 import android.view.Gravity;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
@@ -22,8 +23,13 @@ public class MainActivity extends Activity {
   private int bank = 0;
   private int sendsBus = 1;
   private String activeView = "INPUTS";
+  private final MixerSurfaceState surface = new MixerSurfaceState();
   private static final Pattern CH_FADER = Pattern.compile("/ch/(\\d{2})/fdr");
-  private static final Pattern CH_METER = Pattern.compile("/meters.*");
+  private static final Pattern CH_MUTE = Pattern.compile("/ch/(\\d{2})/mix/on");
+  private static final Pattern CH_SOLO = Pattern.compile("/ch/(\\d{2})/mix/solo");
+  private static final Pattern CH_PAN = Pattern.compile("/ch/(\\d{2})/pan");
+  private static final Pattern BUS_FADER = Pattern.compile("/bus/(\\d{2})/fdr");
+  private static final Pattern DCA_FADER = Pattern.compile("/dca/(\\d{2})/fdr");
 
   @Override public void onCreate(Bundle b) {
     super.onCreate(b);
@@ -32,7 +38,7 @@ public class MainActivity extends Activity {
     udp.setListener(new MixerUdpService.Listener() {
       @Override public void onPacket(String address, Object[] args) { runOnUiThread(() -> handleFeedback(address, args)); }
       @Override public void onError(Exception error) { runOnUiThread(() -> status.setText("Hata: " + error.getMessage())); }
-      @Override public void onConnected() { runOnUiThread(() -> { status.setText("X32 / M32 bağlı"); refreshSurface(); }); }
+      @Override public void onConnected() { runOnUiThread(() -> { status.setText("M32 / X32 bağlandı"); refreshSurface(); }); }
       @Override public void onDisconnected() { runOnUiThread(() -> status.setText("Bağlantı kesildi")); }
     });
   }
@@ -40,19 +46,19 @@ public class MainActivity extends Activity {
   private void buildUi() {
     LinearLayout root = new LinearLayout(this);
     root.setOrientation(LinearLayout.VERTICAL);
-    root.setPadding(dp(6), dp(6), dp(6), dp(6));
+    root.setPadding(dp(8), dp(5), dp(8), dp(5));
 
     LinearLayout top = new LinearLayout(this);
     top.setGravity(Gravity.CENTER_VERTICAL);
     EditText host = new EditText(this);
     host.setSingleLine(true);
-    host.setHint("X32 / M32 IP");
-    top.addView(host, new LinearLayout.LayoutParams(0, dp(46), 1));
+    host.setHint("M32 / X32 IP");
+    top.addView(host, new LinearLayout.LayoutParams(0, dp(44), 1));
     Button connect = button("BAĞLAN");
-    top.addView(connect, new LinearLayout.LayoutParams(dp(108), dp(46)));
+    top.addView(connect, new LinearLayout.LayoutParams(dp(112), dp(44)));
     status = text("Bağlantı yok");
     status.setGravity(Gravity.CENTER_VERTICAL);
-    top.addView(status, new LinearLayout.LayoutParams(dp(175), dp(46)));
+    top.addView(status, new LinearLayout.LayoutParams(dp(190), dp(44)));
     root.addView(top);
 
     LinearLayout nav = new LinearLayout(this);
@@ -101,32 +107,37 @@ public class MainActivity extends Activity {
 
   private void addInputStrip(int input) {
     LinearLayout strip = baseStrip("CH " + pad(input));
-    TextView meter = text("M -∞");
+    TextView meter = text(formatMeter(surface.getChannelMeter(input)));
     meter.setTag("meter:" + input);
-    strip.addView(meter);
-    TextView value = text("-∞ dB");
+    strip.addView(meter, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(32)));
+    TextView value = text(formatDb(surface.getChannelFader(input)));
     value.setTag("faderText:" + input);
-    strip.addView(value);
+    strip.addView(value, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(30)));
     SeekBar fader = fader();
     fader.setTag("fader:" + input);
+    fader.setProgress(Math.round(surface.getChannelFader(input) * 1000));
     fader.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
       public void onProgressChanged(SeekBar bar, int p, boolean fromUser) {
-        if (fromUser) value.setText(String.format(Locale.US, "%.1f dB", faderDb(p)));
+        if (fromUser) value.setText(formatDb(p / 1000f));
       }
       public void onStartTrackingTouch(SeekBar bar) {}
-      public void onStopTrackingTouch(SeekBar bar) { send(chAddr(input, "fdr"), bar.getProgress() / 1000f); }
+      public void onStopTrackingTouch(SeekBar bar) { float v = bar.getProgress()/1000f; surface.setChannelFader(input, v); send(chAddr(input, "fdr"), v); }
     });
-    strip.addView(fader, new LinearLayout.LayoutParams(dp(78), dp(250)));
-    Button mute = button("M");
-    mute.setTag("mute:" + input);
-    mute.setOnClickListener(v -> toggle(mute, chAddr(input, "mix/on"), true));
+    strip.addView(fader, new LinearLayout.LayoutParams(dp(82), dp(248)));
+    Button mute = button(surface.isMuted(input) ? "M●" : "M");
+    mute.setOnClickListener(v -> { boolean next = !surface.isMuted(input); surface.setChannelMute(input, next); mute.setText(next ? "M●" : "M"); send(chAddr(input, "mix/on"), next ? 0 : 1); });
     strip.addView(mute);
-    Button solo = button("S");
-    solo.setTag("solo:" + input);
-    solo.setOnClickListener(v -> toggle(solo, chAddr(input, "mix/solo"), false));
+    Button solo = button(surface.isSolo(input) ? "S●" : "S");
+    solo.setOnClickListener(v -> { boolean next = !surface.isSolo(input); surface.setChannelSolo(input, next); solo.setText(next ? "S●" : "S"); send(chAddr(input, "mix/solo"), next ? 1 : 0); });
     strip.addView(solo);
     Button pan = button("PAN");
-    pan.setOnClickListener(v -> send(chAddr(input, "pan"), 0.5f));
+    pan.setOnTouchListener((v, e) -> {
+      if (e.getAction() == MotionEvent.ACTION_UP) {
+        float next = surface.channel(input).pan >= 0.99f ? 0.01f : Math.min(0.99f, surface.channel(input).pan + 0.1f);
+        surface.setChannelPan(input, next); send(chAddr(input, "pan"), next);
+      }
+      return true;
+    });
     strip.addView(pan);
     Button detail = button("EDIT");
     detail.setOnClickListener(v -> showInputTools(input));
@@ -143,40 +154,41 @@ public class MainActivity extends Activity {
 
   private void addBusStrip(int bus) {
     LinearLayout strip = baseStrip("BUS " + pad(bus));
-    TextView value = text("-∞ dB");
-    value.setTag("busText:" + bus);
-    strip.addView(value);
+    TextView value = text(formatDb(surface.getBusFader(bus)));
+    strip.addView(value, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(30)));
     SeekBar f = fader();
     f.setTag("busFader:" + bus);
+    f.setProgress(Math.round(surface.getBusFader(bus) * 1000));
     f.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-      public void onProgressChanged(SeekBar b, int p, boolean u) { if (u) value.setText(String.format(Locale.US, "%.1f dB", faderDb(p))); }
+      public void onProgressChanged(SeekBar b, int p, boolean u) { if (u) value.setText(formatDb(p/1000f)); }
       public void onStartTrackingTouch(SeekBar b) {}
-      public void onStopTrackingTouch(SeekBar b) { send("/bus/" + pad(bus) + "/fdr", b.getProgress()/1000f); }
+      public void onStopTrackingTouch(SeekBar b) { float v=b.getProgress()/1000f; surface.setBusFader(bus,v); send("/bus/"+pad(bus)+"/fdr",v); }
     });
-    strip.addView(f, new LinearLayout.LayoutParams(dp(78), dp(250)));
-    Button mute = button("M");
-    mute.setOnClickListener(v -> toggle(mute, "/bus/" + pad(bus) + "/mix/on", true));
+    strip.addView(f, new LinearLayout.LayoutParams(dp(82), dp(248)));
+    Button mute=button("M");
+    mute.setOnClickListener(v -> send("/bus/"+pad(bus)+"/mix/on",0));
     strip.addView(mute);
     channelList.addView(strip);
   }
 
   private void buildDcaBank() {
     channelList.removeAllViews();
-    for (int i = 1; i <= 8; i++) {
-      final int dca = i;
-      LinearLayout strip = baseStrip("DCA " + dca);
-      TextView value = text("-∞ dB");
-      strip.addView(value);
-      SeekBar f = fader();
-      f.setTag("dcaFader:" + dca);
-      f.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-        public void onProgressChanged(SeekBar b, int p, boolean u) { if (u) value.setText(String.format(Locale.US, "%.1f dB", faderDb(p))); }
-        public void onStartTrackingTouch(SeekBar b) {}
-        public void onStopTrackingTouch(SeekBar b) { send("/dca/" + pad(dca) + "/fdr", b.getProgress()/1000f); }
+    for (int i=1;i<=8;i++) {
+      final int dca=i;
+      LinearLayout strip=baseStrip("DCA "+dca);
+      TextView value=text(formatDb(surface.getDcaFader(dca)));
+      strip.addView(value,new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,dp(30)));
+      SeekBar f=fader();
+      f.setTag("dcaFader:"+dca);
+      f.setProgress(Math.round(surface.getDcaFader(dca)*1000));
+      f.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
+        public void onProgressChanged(SeekBar b,int p,boolean u){if(u)value.setText(formatDb(p/1000f));}
+        public void onStartTrackingTouch(SeekBar b){}
+        public void onStopTrackingTouch(SeekBar b){float v=b.getProgress()/1000f; surface.setDcaFader(dca,v); send("/dca/"+pad(dca)+"/fdr",v);}
       });
-      strip.addView(f, new LinearLayout.LayoutParams(dp(78), dp(250)));
-      Button mute = button("M");
-      mute.setOnClickListener(v -> toggle(mute, "/dca/" + pad(dca) + "/on", true));
+      strip.addView(f,new LinearLayout.LayoutParams(dp(82),dp(248)));
+      Button mute=button("M");
+      mute.setOnClickListener(v->send("/dca/"+pad(dca)+"/on",0));
       strip.addView(mute);
       channelList.addView(strip);
     }
@@ -185,140 +197,150 @@ public class MainActivity extends Activity {
 
   private void buildMainBank() {
     channelList.removeAllViews();
-    addMainStrip("MAIN", "/main/st/mix/fader");
-    addMainStrip("MONO", "/main/m/mix/fader");
-    for (int i = 1; i <= 6; i++) addMainStrip("MATRIX " + i, "/mtx/" + pad(i) + "/fdr");
-    status.setText("MAIN / MATRIX");
+    addMainStrip("MAIN", "/main/st/mix/fader", surface.getMainFader());
+    addMainStrip("MONO", "/main/m/mix/fader", 0f);
+    for(int i=1;i<=6;i++) addMainStrip("MATRIX "+i,"/mtx/"+pad(i)+"/fdr",0f);
+    status.setText("MAIN / MONO / MATRIX");
   }
 
-  private void addMainStrip(String name, String address) {
-    LinearLayout strip = baseStrip(name);
-    TextView value = text("-∞ dB");
-    strip.addView(value);
-    SeekBar f = fader();
-    f.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-      public void onProgressChanged(SeekBar b, int p, boolean u) { if (u) value.setText(String.format(Locale.US, "%.1f dB", faderDb(p))); }
-      public void onStartTrackingTouch(SeekBar b) {}
-      public void onStopTrackingTouch(SeekBar b) { send(address, b.getProgress()/1000f); }
+  private void addMainStrip(String name,String address,float current){
+    LinearLayout strip=baseStrip(name);
+    TextView value=text(formatDb(current)); strip.addView(value,new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,dp(30)));
+    SeekBar f=fader(); f.setProgress(Math.round(current*1000));
+    f.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
+      public void onProgressChanged(SeekBar b,int p,boolean u){if(u)value.setText(formatDb(p/1000f));}
+      public void onStartTrackingTouch(SeekBar b){}
+      public void onStopTrackingTouch(SeekBar b){send(address,b.getProgress()/1000f);}
     });
-    strip.addView(f, new LinearLayout.LayoutParams(dp(78), dp(250)));
+    strip.addView(f,new LinearLayout.LayoutParams(dp(82),dp(248)));
     channelList.addView(strip);
   }
 
   private void buildSendOnFader() {
     channelList.removeAllViews();
-    Button busMinus = button("BUS -");
-    busMinus.setOnClickListener(v -> { sendsBus = Math.max(1, sendsBus - 1); buildSendOnFader(); });
-    Button busPlus = button("BUS +");
-    busPlus.setOnClickListener(v -> { sendsBus = Math.min(16, sendsBus + 1); buildSendOnFader(); });
-    LinearLayout head = new LinearLayout(this);
-    head.addView(busMinus); head.addView(text("BUS " + sendsBus)); head.addView(busPlus);
+    Button busMinus=button("BUS -");
+    busMinus.setOnClickListener(v->{sendsBus=Math.max(1,sendsBus-1);buildSendOnFader();});
+    Button busPlus=button("BUS +");
+    busPlus.setOnClickListener(v->{sendsBus=Math.min(16,sendsBus+1);buildSendOnFader();});
+    LinearLayout head=new LinearLayout(this);
+    head.addView(busMinus); head.addView(text("BUS "+sendsBus)); head.addView(busPlus);
     channelList.addView(head);
-    int start = (bank / 8) * 8 + 1;
-    for (int i = 0; i < 8 && start + i <= 32; i++) {
-      final int input = start + i;
-      LinearLayout strip = baseStrip("CH " + pad(input));
-      TextView value = text("-∞ dB");
-      strip.addView(value);
-      SeekBar f = fader();
-      f.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-        public void onProgressChanged(SeekBar b, int p, boolean u) { if (u) value.setText(String.format(Locale.US, "%.1f dB", faderDb(p))); }
-        public void onStartTrackingTouch(SeekBar b) {}
-        public void onStopTrackingTouch(SeekBar b) { send("/ch/" + pad(input) + "/mix/" + pad(sendsBus) + "/send", b.getProgress()/1000f); }
+    int start=(bank/8)*8+1;
+    for(int i=0;i<8&&start+i<=32;i++){
+      final int input=start+i;
+      LinearLayout strip=baseStrip("CH "+pad(input));
+      TextView value=text("-∞ dB");strip.addView(value,new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,dp(30)));
+      SeekBar f=fader();
+      f.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
+        public void onProgressChanged(SeekBar b,int p,boolean u){if(u)value.setText(formatDb(p/1000f));}
+        public void onStartTrackingTouch(SeekBar b){}
+        public void onStopTrackingTouch(SeekBar b){send("/ch/"+pad(input)+"/mix/"+pad(sendsBus)+"/send",b.getProgress()/1000f);}
       });
-      strip.addView(f, new LinearLayout.LayoutParams(dp(78), dp(250)));
+      strip.addView(f,new LinearLayout.LayoutParams(dp(82),dp(248)));
       channelList.addView(strip);
     }
-    status.setText("SENDS ON FADER: BUS " + sendsBus);
+    status.setText("SENDS ON FADER: BUS "+sendsBus);
   }
 
   private void showInputTools(int input) {
     channelList.removeAllViews();
-    LinearLayout strip = baseStrip("CH " + pad(input));
-    addEdit(strip, "GAIN +0", chAddr(input, "preamp/gain"));
-    addEdit(strip, "PHANTOM", chAddr(input, "preamp/phantom"));
-    addEdit(strip, "POLARITY", chAddr(input, "preamp/invert"));
-    addEdit(strip, "HPF", chAddr(input, "eq/lo/f"));
-    addEdit(strip, "EQ1 F", chAddr(input, "eq/1/f"));
-    addEdit(strip, "EQ1 G", chAddr(input, "eq/1/g"));
-    addEdit(strip, "EQ2 F", chAddr(input, "eq/2/f"));
-    addEdit(strip, "EQ2 G", chAddr(input, "eq/2/g"));
-    addEdit(strip, "EQ3 F", chAddr(input, "eq/3/f"));
-    addEdit(strip, "EQ3 G", chAddr(input, "eq/3/g"));
-    addEdit(strip, "EQ4 F", chAddr(input, "eq/4/f"));
-    addEdit(strip, "EQ4 G", chAddr(input, "eq/4/g"));
-    addEdit(strip, "DELAY", chAddr(input, "delay/time"));
+    LinearLayout strip=baseStrip("CH "+pad(input)+" DETAIL");
+    addNumericEdit(strip,"GAIN",chAddr(input,"preamp/gain"),0f);
+    addToggleEdit(strip,"PHANTOM",chAddr(input,"preamp/phantom"));
+    addToggleEdit(strip,"POLARITY",chAddr(input,"preamp/invert"));
+    addNumericEdit(strip,"HPF",chAddr(input,"eq/lo/f"),0.5f);
+    for(int band=1;band<=4;band++){
+      addNumericEdit(strip,"EQ"+band+" F",chAddr(input,"eq/"+band+"/f"),0.5f);
+      addNumericEdit(strip,"EQ"+band+" G",chAddr(input,"eq/"+band+"/g"),0.5f);
+      addNumericEdit(strip,"EQ"+band+" Q",chAddr(input,"eq/"+band+"/q"),0.5f);
+    }
+    addNumericEdit(strip,"DELAY",chAddr(input,"delay/time"),0f);
+    Button back=button("‹ INPUTS"); back.setOnClickListener(v->rebuildActive()); strip.addView(back);
     channelList.addView(strip);
-    status.setText("CH " + pad(input) + " EDIT");
+    status.setText("CH "+pad(input)+" DETAIL");
   }
 
-  private void addEdit(LinearLayout parent, String title, String address) {
-    Button b = button(title);
-    b.setOnClickListener(v -> send(address, 0.5f));
-    parent.addView(b);
+  private void addNumericEdit(LinearLayout parent,String title,String address,float value){
+    Button b=button(title); b.setOnClickListener(v->send(address,value)); parent.addView(b);
+  }
+  private void addToggleEdit(LinearLayout parent,String title,String address){
+    Button b=button(title); b.setOnClickListener(v->send(address,1)); parent.addView(b);
   }
 
-  private void connectToMixer(EditText host) {
-    String h = host.getText().toString().trim();
-    if (h.isEmpty()) { status.setText("X32/M32 IP gerekli"); return; }
-    getSharedPreferences("stagepulsemix", MODE_PRIVATE).edit().putString("host", h).apply();
-    udp.connect(h, 10023, 0);
+  private void connectToMixer(EditText host){
+    String h=host.getText().toString().trim();
+    if(h.isEmpty()){status.setText("M32/X32 IP gerekli");return;}
+    getSharedPreferences("stagepulsemix",MODE_PRIVATE).edit().putString("host",h).apply();
+    status.setText("Bağlanıyor: "+h);
+    udp.connect(h,10023,0);
   }
 
-  private void refreshSurface() {
+  private void refreshSurface(){
     send("/xremote"); send("/info"); send("/status"); send("/config");
     send("/-stat/chfaderbank"); send("/-stat/grpfaderbank"); send("/-stat/sendsonfader");
     send("/meters", "/meters/0", 1); send("/meters", "/meters/6", 1); send("/meters", "/meters/7", 1); send("/meters", "/meters/12", 1);
+    for(int i=1;i<=32;i++){ send(chAddr(i,"fdr")); send(chAddr(i,"mix/on")); send(chAddr(i,"mix/solo")); send(chAddr(i,"pan")); }
+    for(int i=1;i<=16;i++){ send("/bus/"+pad(i)+"/fdr"); send("/bus/"+pad(i)+"/mix/on"); }
+    for(int i=1;i<=8;i++){ send("/dca/"+pad(i)+"/fdr"); send("/dca/"+pad(i)+"/on"); }
   }
 
-  private void handleFeedback(String address, Object[] args) {
-    Matcher m = CH_FADER.matcher(address);
-    if (m.matches() && args.length > 0 && args[0] instanceof Number) {
-      int input = Integer.parseInt(m.group(1));
-      float raw = ((Number) args[0]).floatValue();
-      float normalized = normalizeFader(raw);
-      View view = channelList.findViewWithTag("fader:" + input);
-      if (view instanceof SeekBar) ((SeekBar) view).setProgress(Math.max(0, Math.min(1000, Math.round(normalized * 1000))));
-      View value = channelList.findViewWithTag("faderText:" + input);
-      if (value instanceof TextView) ((TextView) value).setText(String.format(Locale.US, "%.1f dB", faderDb(Math.round(normalized * 1000))));
-      status.setText("RX " + address + "  " + String.format(Locale.US, "%.1f dB", faderDb(Math.round(normalized * 1000))));
-      return;
+  private void handleFeedback(String address,Object[] args){
+    if(args.length==0)return;
+    Object first=args[0];
+    Matcher m=CH_FADER.matcher(address);
+    if(m.matches()&&first instanceof Number){int ch=Integer.parseInt(m.group(1));float v=normalizeFader(((Number)first).floatValue());surface.setChannelFader(ch,v);updateInputFader(ch,v);return;}
+    m=CH_MUTE.matcher(address); if(m.matches()&&first instanceof Number){int ch=Integer.parseInt(m.group(1));boolean muted=((Number)first).floatValue()<0.5f;surface.setChannelMute(ch,muted);updateInputMute(ch,muted);return;}
+    m=CH_SOLO.matcher(address); if(m.matches()&&first instanceof Number){int ch=Integer.parseInt(m.group(1));boolean solo=((Number)first).floatValue()>=0.5f;surface.setChannelSolo(ch,solo);updateInputSolo(ch,solo);return;}
+    m=CH_PAN.matcher(address); if(m.matches()&&first instanceof Number){surface.setChannelPan(Integer.parseInt(m.group(1)),normalize01(((Number)first).floatValue()));return;}
+    m=BUS_FADER.matcher(address); if(m.matches()&&first instanceof Number){surface.setBusFader(Integer.parseInt(m.group(1)),normalizeFader(((Number)first).floatValue()));return;}
+    m=DCA_FADER.matcher(address); if(m.matches()&&first instanceof Number){surface.setDcaFader(Integer.parseInt(m.group(1)),normalizeFader(((Number)first).floatValue()));return;}
+    if(address.contains("/meters")||address.startsWith("/meters")){handleMeter(args);return;}
+    if(address.startsWith("/info")){status.setText("Mikser bilgisi alındı");}
+  }
+
+  private void updateInputFader(int input,float v){
+    View f=channelList.findViewWithTag("fader:"+input);
+    if(f instanceof SeekBar){SeekBar bar=(SeekBar)f;int target=Math.round(v*1000);if(Math.abs(bar.getProgress()-target)>2)bar.setProgress(target);}
+    View t=channelList.findViewWithTag("faderText:"+input);if(t instanceof TextView)((TextView)t).setText(formatDb(v));
+  }
+  private void updateInputMute(int input,boolean muted){View v=channelList.findViewWithTag("mute:"+input);if(v instanceof Button)((Button)v).setText(muted?"M●":"M");}
+  private void updateInputSolo(int input,boolean solo){View v=channelList.findViewWithTag("solo:"+input);if(v instanceof Button)((Button)v).setText(solo?"S●":"S");}
+
+  private void handleMeter(Object[] args){
+    for(int i=0;i<args.length;i++){
+      if(!(args[i] instanceof Number))continue;
+      float raw=((Number)args[i]).floatValue();
+      int ch=i+1;
+      if(ch>32)break;
+      float normalized=normalizeMeter(raw);
+      surface.setChannelMeter(ch,normalized);
+      View meter=channelList.findViewWithTag("meter:"+ch);
+      if(meter instanceof TextView)((TextView)meter).setText(formatMeter(normalized));
     }
-    if (address.startsWith("/info") || address.startsWith("/status") || address.startsWith("/config")) {
-      status.setText("Bağlı: " + address);
-    }
   }
 
-  private float normalizeFader(float value) {
-    if (value >= 0f && value <= 1.01f) return value;
-    return Math.max(0f, Math.min(1f, (value + 90f) / 100f));
+  private float normalizeMeter(float value){
+    if(Float.isNaN(value)||Float.isInfinite(value))return 0f;
+    if(value>=0f&&value<=1f)return value;
+    float db=Math.max(-90f,Math.min(10f,value));
+    return (db+90f)/100f;
   }
+  private float normalizeFader(float value){if(value>=0f&&value<=1.01f)return clamp01(value);return clamp01((value+90f)/100f);}
+  private float normalize01(float value){return clamp01(value);}
+  private float clamp01(float value){return Math.max(0f,Math.min(1f,value));}
+  private String formatDb(float value){return String.format(Locale.US,"%.1f dB",-90f+clamp01(value)*100f);}
+  private String formatMeter(float value){float db=-90f+clamp01(value)*100f;return db<=-89.9f?"M -∞":"M "+String.format(Locale.US,"%.1f",db);}
 
-  private void toggle(Button b, String address, boolean activeHigh) {
-    boolean on = !Boolean.TRUE.equals(b.getTag());
-    b.setTag(on);
-    b.setText(on ? "●" : "M");
-    send(address, activeHigh ? (on ? 0 : 1) : (on ? 1 : 0));
+  private LinearLayout baseStrip(String name){
+    LinearLayout strip=new LinearLayout(this);strip.setOrientation(LinearLayout.VERTICAL);strip.setGravity(Gravity.CENTER_HORIZONTAL);strip.setPadding(dp(4),dp(4),dp(4),dp(4));strip.setLayoutParams(new LinearLayout.LayoutParams(dp(104),ViewGroup.LayoutParams.MATCH_PARENT));strip.addView(text(name));return strip;
   }
+  private SeekBar fader(){SeekBar f=new SeekBar(this);f.setMax(1000);f.setProgress(0);f.setRotation(-90f);return f;}
+  private TextView text(String s){TextView t=new TextView(this);t.setText(s);t.setGravity(Gravity.CENTER);t.setPadding(2,2,2,2);return t;}
+  private Button button(String s){Button b=new Button(this);b.setText(s);return b;}
+  private void send(String address,Object...args){try{if(udp!=null)udp.send(address,args);}catch(Exception e){status.setText("TX hata: "+e.getMessage());}}
+  private String chAddr(int ch,String suffix){return "/ch/"+pad(ch)+"/"+suffix;}
+  private String pad(int n){return String.format(Locale.US,"%02d",n);}
+  private int dp(int v){return (int)(v*getResources().getDisplayMetrics().density+0.5f);}
 
-  private LinearLayout baseStrip(String name) {
-    LinearLayout strip = new LinearLayout(this);
-    strip.setOrientation(LinearLayout.VERTICAL);
-    strip.setGravity(Gravity.CENTER_HORIZONTAL);
-    strip.setPadding(dp(5), dp(5), dp(5), dp(5));
-    strip.setLayoutParams(new LinearLayout.LayoutParams(dp(96), ViewGroup.LayoutParams.MATCH_PARENT));
-    strip.addView(text(name));
-    return strip;
-  }
-
-  private SeekBar fader() { SeekBar f = new SeekBar(this); f.setMax(1000); f.setProgress(1000); f.setRotation(-90f); return f; }
-  private TextView text(String s) { TextView t = new TextView(this); t.setText(s); t.setGravity(Gravity.CENTER); t.setPadding(2,2,2,2); return t; }
-  private Button button(String s) { Button b = new Button(this); b.setText(s); return b; }
-  private void send(String address, Object... args) { try { if (udp != null) udp.send(address, args); } catch (Exception e) { status.setText("TX hata: " + e.getMessage()); } }
-  private String chAddr(int ch, String suffix) { return "/ch/" + pad(ch) + "/" + suffix; }
-  private String pad(int n) { return String.format(Locale.US, "%02d", n); }
-  private float faderDb(int p) { return -90f + p * 0.1f; }
-  private int dp(int v) { return (int)(v * getResources().getDisplayMetrics().density + 0.5f); }
-
-  @Override protected void onDestroy() { if (udp != null) udp.shutdown(); super.onDestroy(); }
+  @Override protected void onDestroy(){if(udp!=null)udp.shutdown();super.onDestroy();}
 }
