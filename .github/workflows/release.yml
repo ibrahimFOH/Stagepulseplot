@@ -8,14 +8,25 @@ on:
 
 permissions:
   contents: write
+  pages: write
+  id-token: write
 
 env:
   ANDROID_HOME: /usr/local/lib/android/sdk
   GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx2g -Dfile.encoding=UTF-8
+  PAGES_BASE_URL: https://ibrahimfoh.github.io/StagepulseMix
+
+env:
+  ANDROID_HOME: /usr/local/lib/android/sdk
+  GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx2g -Dfile.encoding=UTF-8
+  PAGES_BASE_URL: https://ibrahimfoh.github.io/StagepulseMix
 
 jobs:
   release:
     runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -85,7 +96,7 @@ jobs:
           echo "sha256=$SHA" >> "$GITHUB_OUTPUT"
           echo "$SHA  app-release.apk" > android/app/build/outputs/apk/release/SHA256SUMS.txt
 
-      - name: Publish update manifest
+      - name: Build public update site
         if: startsWith(github.ref, 'refs/tags/')
         env:
           TAG: ${{ github.ref_name }}
@@ -102,7 +113,54 @@ jobs:
           payload = {
               'version': v,
               'versionCode': code,
-              'apk': f'https://github.com/ibrahimFOH/StagepulseMix/releases/download/v{v}/app-release.apk',
+              'apk': f"{os.environ['PAGES_BASE_URL']}/app-release.apk",
+              'sha256': os.environ['SHA256'],
+              'notes': f'StagePulseMix {v}'
+          }
+          site = Path('site')
+          site.mkdir(parents=True, exist_ok=True)
+          (site / 'latest.json').write_text(json.dumps(payload, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')
+          (site / 'index.html').write_text('<!doctype html><meta charset="utf-8"><title>StagePulseMix Updates</title><p>StagePulseMix automatic update distribution.</p>', encoding='utf-8')
+          (site / '.nojekyll').write_text('', encoding='utf-8')
+          PY
+          cp android/app/build/outputs/apk/release/app-release.apk site/app-release.apk
+          cp android/app/build/outputs/apk/release/SHA256SUMS.txt site/SHA256SUMS.txt
+          test -s site/latest.json
+          test -s site/app-release.apk
+
+      - name: Configure GitHub Pages
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: actions/configure-pages@v5
+
+      - name: Upload GitHub Pages artifact
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: site
+
+      - name: Deploy GitHub Pages
+        if: startsWith(github.ref, 'refs/tags/')
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+      - name: Publish repository manifest pointer
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          TAG: ${{ github.ref_name }}
+          SHA256: ${{ steps.hash.outputs.sha256 }}
+        run: |
+          set -euo pipefail
+          VERSION="${TAG#v}"
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          v = os.environ['VERSION']
+          major, minor, patch = [int(x) for x in v.split('.')]
+          code = major * 10000 + minor * 100 + patch
+          payload = {
+              'version': v,
+              'versionCode': code,
+              'apk': f"{os.environ['PAGES_BASE_URL']}/app-release.apk",
               'sha256': os.environ['SHA256'],
               'notes': f'StagePulseMix {v}'
           }
@@ -114,7 +172,7 @@ jobs:
           git diff --cached --quiet || git commit -m "Publish update manifest ${TAG}"
           git push origin HEAD:main
 
-      - name: Upload APK
+      - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: StagePulseMix-release
