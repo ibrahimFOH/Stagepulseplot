@@ -1,0 +1,50 @@
+name: StagePulseMix Pages Update Distribution
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      - name: Build placeholder update site
+        run: |
+          set -euo pipefail
+          mkdir -p site
+          cat > site/index.html <<'EOF'
+          <!doctype html>
+          <html lang="tr">
+          <head><meta charset="utf-8"><title>StagePulseMix Updates</title></head>
+          <body><h1>StagePulseMix</h1><p>Güncelleme dağıtım servisi aktif.</p></body>
+          </html>
+          EOF
+          printf '%s\n' '' > site/.nojekyll
+          test -s site/index.html
+
+      - name: Upload GitHub Pages artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: site
+
+      - name: Deploy GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
