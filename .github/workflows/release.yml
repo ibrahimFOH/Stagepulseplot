@@ -7,7 +7,11 @@ on:
       - 'v*.*.*'
 
 permissions:
-  contents: read
+  contents: write
+
+env:
+  ANDROID_HOME: /usr/local/lib/android/sdk
+  GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx2g -Dfile.encoding=UTF-8
 
 jobs:
   release:
@@ -23,22 +27,21 @@ jobs:
 
       - name: Verify Node project
         run: |
-          npm install
+          npm ci
           npm run check
           npm test
           npm run package:source
 
       - name: Setup JDK
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
-
-      - name: Install Android SDK
-        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+        with:
+          packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
 
       - name: Install Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -62,30 +65,40 @@ jobs:
           echo "STAGEPULSE_KEY_ALIAS=$STAGEPULSE_KEY_ALIAS" >> "$GITHUB_ENV"
           echo "STAGEPULSE_KEY_PASSWORD=$STAGEPULSE_KEY_PASSWORD" >> "$GITHUB_ENV"
 
-      - name: Build release APK
+      - name: Build signed release APK
         working-directory: android
         run: gradle :app:assembleRelease --no-daemon
 
-      - name: Verify APK exists
+      - name: Verify signed APK
         run: |
           set -euo pipefail
-          APK=$(find android/app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' -print -quit)
-          test -n "$APK"
-          echo "APK=$APK" >> "$GITHUB_ENV"
-
-      - name: Verify APK signature
-        run: |
-          set -euo pipefail
+          APK="android/app/build/outputs/apk/release/app-release.apk"
+          test -s "$APK"
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt2" dump badging "$APK" | grep -F "package: name='com.stagepulse.mix' versionCode='10000' versionName='1.0.0'"
+
+      - name: Calculate SHA256
+        run: sha256sum android/app/build/outputs/apk/release/app-release.apk | tee android/app/build/outputs/apk/release/SHA256SUMS.txt
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: StagePulseMix-release
-          path: android/app/build/outputs/apk/release/*.apk
+          path: |
+            android/app/build/outputs/apk/release/app-release.apk
+            android/app/build/outputs/apk/release/SHA256SUMS.txt
 
       - name: Upload source package
         uses: actions/upload-artifact@v4
         with:
           name: StagePulseMix-source
           path: dist/StagePulseMix-source.zip
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            android/app/build/outputs/apk/release/app-release.apk
+            android/app/build/outputs/apk/release/SHA256SUMS.txt
