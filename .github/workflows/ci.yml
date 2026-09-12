@@ -57,7 +57,8 @@ jobs:
           set -euo pipefail
           APK="android/app/build/outputs/apk/release/app-release-unsigned.apk"
           test -s "$APK"
-          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt2" dump badging "$APK" | grep -E "package: name='com.stagepulse.mix' versionCode='10000' versionName='1.0.0'"
+          test -z "$("$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$APK" 2>&1 || true)"
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
