@@ -8,7 +8,7 @@ android {
         applicationId 'com.stagepulse.mix'
         minSdk 26
         targetSdk 35
-        versionCode 100
+        versionCode 10000
         versionName '1.0.0'
     }
 
@@ -27,9 +27,7 @@ android {
     buildTypes {
         release {
             minifyEnabled false
-            if (hasReleaseSigning) {
-                signingConfig signingConfigs.release
-            }
+            if (hasReleaseSigning) signingConfig signingConfigs.release
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
