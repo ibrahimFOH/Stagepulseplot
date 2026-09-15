@@ -37,13 +37,19 @@ jobs:
           set -euo pipefail
           node --check planner/app.js
           node --check planner/rider.js
+          node --check planner/photo-icons.js
           node --check android/app/src/main/assets/planner/app.js
           node --check android/app/src/main/assets/planner/rider.js
+          node --check android/app/src/main/assets/planner/photo-icons.js
           cmp -s planner/app.js android/app/src/main/assets/planner/app.js
           cmp -s planner/index.html android/app/src/main/assets/planner/index.html
           cmp -s planner/style.css android/app/src/main/assets/planner/style.css
           cmp -s planner/rider.js android/app/src/main/assets/planner/rider.js
           cmp -s planner/rider.css android/app/src/main/assets/planner/rider.css
+          cmp -s planner/photo-icons.js android/app/src/main/assets/planner/photo-icons.js
+          cmp -s planner/stagepulse-logo.svg android/app/src/main/assets/planner/stagepulse-logo.svg
+          test -s planner/stagepulse-logo.svg
+          test -s android/app/src/main/assets/planner/stagepulse-logo.svg
       - name: Prepare signing keystore
         env:
           STAGEPULSE_KEYSTORE_BASE64: ${{ secrets.STAGEPULSE_KEYSTORE_BASE64 }}
@@ -78,6 +84,8 @@ jobs:
           unzip -l "$APK" | grep -F 'assets/planner/rider.css'
           unzip -l "$APK" | grep -F 'assets/planner/index.html'
           unzip -l "$APK" | grep -F 'assets/planner/app.js'
+          unzip -l "$APK" | grep -F 'assets/planner/photo-icons.js'
+          unzip -l "$APK" | grep -F 'assets/planner/stagepulse-logo.svg'
           sha256sum "$APK"
           ls -lh "$APK"
       - name: Upload APK artifact
