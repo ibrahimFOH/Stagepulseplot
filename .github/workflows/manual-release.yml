@@ -41,6 +41,10 @@ jobs:
           STAGEPULSE_KEY_PASSWORD: ${{ secrets.STAGEPULSE_KEY_PASSWORD }}
         run: |
           set -euo pipefail
+          test -n "$STAGEPULSE_KEYSTORE_BASE64"
+          test -n "$STAGEPULSE_KEYSTORE_PASSWORD"
+          test -n "$STAGEPULSE_KEY_ALIAS"
+          test -n "$STAGEPULSE_KEY_PASSWORD"
           printf '%s' "$STAGEPULSE_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/stagepulse-release.keystore"
           test -s "$RUNNER_TEMP/stagepulse-release.keystore"
           echo "STAGEPULSE_KEYSTORE_PATH=$RUNNER_TEMP/stagepulse-release.keystore" >> "$GITHUB_ENV"
@@ -61,6 +65,15 @@ jobs:
           unzip -l "$APK" | grep -F 'assets/planner/rider.js'
           unzip -l "$APK" | grep -F 'assets/planner/rider.css'
           unzip -l "$APK" | grep -F 'assets/planner/index.html'
+          sha256sum "$APK"
+          ls -lh "$APK"
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: StagePulse-Plot-2.0.0-APK
+          path: android/app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+          retention-days: 30
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
