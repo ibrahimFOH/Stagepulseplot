@@ -1,0 +1,1 @@
+window.StagePulseEquipmentCatalog={version:1,items:[{category:'instrument',name:'Vokal mikrofonu',width:0.05,height:0.05}]};
