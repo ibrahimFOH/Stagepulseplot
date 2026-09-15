@@ -49,8 +49,8 @@ jobs:
               exit 1
             fi
           done
-          grep -F 'photo-icons.js?v=1' planner/index.html
-          grep -F 'photo-icons.js?v=1' android/app/src/main/assets/planner/index.html
+          grep -F 'photo-icons.js?v=2' planner/index.html
+          grep -F 'photo-icons.js?v=2' android/app/src/main/assets/planner/index.html
           test -s planner/photo-icons.js
           test -s android/app/src/main/assets/planner/photo-icons.js
           test -s planner/stagepulse-logo.svg
