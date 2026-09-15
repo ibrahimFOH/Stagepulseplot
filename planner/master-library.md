@@ -1,0 +1,1 @@
+Master APK'daki ekipman kütüphanesi adları kullanılarak StagePulse Plot kütüphanesi yeniden düzenlendi. Görseller uygulama kaynaklarından yerel olarak eşleştirilecektir.
