@@ -2,7 +2,6 @@ package com.stagepulse.mix;
 
 import android.app.Activity;
 import android.content.Intent;
-import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
 import android.provider.Settings;
@@ -13,11 +12,13 @@ import androidx.core.content.FileProvider;
 import org.json.JSONObject;
 
 import java.io.BufferedInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -52,7 +53,14 @@ public final class AppUpdater {
         });
     }
 
-    private long currentVersionCode() {
+    public void onResume() {
+        if (pendingApk == null || !pendingApk.isFile()) return;
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || activity.getPackageManager().canRequestPackageInstalls()) {
+            installPending();
+        }
+    }
+
+    private long currentVersionCode() throws Exception {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             return activity.getPackageManager().getPackageInfo(activity.getPackageName(), 0).getLongVersionCode();
         }
@@ -68,9 +76,11 @@ public final class AppUpdater {
         if (connection.getResponseCode() != HttpURLConnection.HTTP_OK) {
             throw new IllegalStateException("Update manifest HTTP " + connection.getResponseCode());
         }
-        try (InputStream input = connection.getInputStream()) {
-            byte[] data = input.readAllBytes();
-            return new JSONObject(new String(data, java.nio.charset.StandardCharsets.UTF_8));
+        try (InputStream input = connection.getInputStream(); ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+            byte[] buffer = new byte[4096];
+            int count;
+            while ((count = input.read(buffer)) != -1) output.write(buffer, 0, count);
+            return new JSONObject(output.toString(StandardCharsets.UTF_8.name()));
         } finally {
             connection.disconnect();
         }
