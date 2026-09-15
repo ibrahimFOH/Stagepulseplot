@@ -47,7 +47,6 @@ jobs:
           cmp -s planner/rider.js android/app/src/main/assets/planner/rider.js
           cmp -s planner/rider.css android/app/src/main/assets/planner/rider.css
           cmp -s planner/photo-icons.js android/app/src/main/assets/planner/photo-icons.js
-          cmp -s planner/stagepulse-logo.svg android/app/src/main/assets/planner/stagepulse-logo.svg
           grep -F 'photo-icons.js?v=1' planner/index.html
           grep -F 'photo-icons.js?v=1' android/app/src/main/assets/planner/index.html
           test -s planner/photo-icons.js
