@@ -27,13 +27,52 @@
     'Kablo Hattı': F('Audio multicore cable with XLR connectors and stage box.JPG'),
     'Truss Tower': F('Line array loudspeaker for sound reinforcement at 2009 Presidential Inauguration (clip).jpg')
   };
-  const categoryPhotos={instrument:photos['Elektro gitar'],pa:photos['Line Array L'],console:photos['Midas M32'],stage:photos['Truss Tower'],light:F('Yes concert 2010-12-01 (5252857366).jpg'),production:photos['FOH Konsol']};
-  const clean=s=>String(s||'').replace(/\s+/g,' ').trim();
-  const escape=s=>clean(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-  const nameFromItem=el=>clean(el.querySelector('.meta')?.childNodes?.[0]?.textContent||'');
-  const nameFromObject=el=>clean(el.querySelector('.obj-icon + div')?.textContent||'');
-  function urlFor(name,category){if(photos[name])return photos[name];const n=clean(name).toLocaleLowerCase('tr-TR');if(n.includes('gitar'))return n.includes('bas')?photos['Bas gitar']:(n.includes('akustik')?photos['Akustik gitar']:photos['Elektro gitar']);if(['keman','viyola','çello','kontrbas','kemençe'].some(x=>n.includes(x)))return photos['Keman'];if(n.includes('piyano')||n.includes('klavye'))return photos['Piyano'];if(n.includes('davul')||n.includes('drum'))return photos['Davul seti'];if(n.includes('line array'))return photos['Line Array L'];if(n.includes('subwoofer'))return photos['2×18” Subwoofer L'];if(n.includes('stagebox'))return photos['Stagebox'];if(n.includes('mikrofon'))return photos['Vokal mikrofonu'];if(category&&categoryPhotos[category])return categoryPhotos[category];return null;}
-  function apply(container){container.querySelectorAll('.item').forEach(item=>{const name=nameFromItem(item),icon=item.querySelector('.icon');const category=icon?.className.match(/icon-(\w+)/)?.[1],url=urlFor(name,category);if(!icon||!url||icon.dataset.photoUrl===url)return;icon.dataset.photoUrl=url;icon.innerHTML=`<img class="equipment-photo" src="${url}" alt="${escape(name)}" loading="lazy" referrerpolicy="no-referrer">`;});container.querySelectorAll('.obj').forEach(obj=>{const icon=obj.querySelector('.obj-icon'),name=nameFromObject(obj),url=urlFor(name);if(!icon||!url||icon.dataset.photoUrl===url)return;icon.dataset.photoUrl=url;icon.innerHTML=`<img class="equipment-photo stage-photo" src="${url}" alt="${escape(name)}" loading="lazy" referrerpolicy="no-referrer">`;});}
-  const style=document.createElement('style');style.textContent=` .equipment-photo{display:block;width:100%;height:100%;object-fit:contain;border-radius:7px;background:#fff}.icon .equipment-photo{padding:2px;box-sizing:border-box}.icon{overflow:hidden}.item .icon{width:58px;height:44px;flex:0 0 58px;background:#20262d;border:1px solid #39434d}.item .meta{font-weight:500}.obj-icon{height:52px;overflow:hidden;border-radius:7px;background:#fff}.stage-photo{padding:3px;box-sizing:border-box}header > div:first-child{display:flex;align-items:center;gap:10px}header > div:first-child:before{content:'';display:block;width:132px;height:38px;background:url('stagepulse-logo.svg') center/contain no-repeat}header > div:first-child b{display:none}header > div:first-child span{margin-left:0}`;document.head.appendChild(style);
-  const run=()=>apply(document);const observer=new MutationObserver(()=>requestAnimationFrame(run));observer.observe(document.body,{childList:true,subtree:true});if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',run,{once:true});else run();
+  const categoryPhotos = {
+    instrument: photos['Elektro gitar'],
+    pa: photos['Line Array L'],
+    console: photos['Midas M32'],
+    stage: photos['Truss Tower'],
+    light: F('Yes concert 2010-12-01 (5252857366).jpg'),
+    production: photos['FOH Konsol']
+  };
+  const clean = s => String(s || '').replace(/\s+/g, ' ').trim();
+  const escape = s => clean(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const nameFromItem = el => clean(el.querySelector('.meta')?.childNodes?.[0]?.textContent || '');
+  const nameFromObject = el => clean(el.querySelector('.obj-icon + div')?.textContent || '');
+  function urlFor(name, category) {
+    if (photos[name]) return photos[name];
+    const n = clean(name).toLocaleLowerCase('tr-TR');
+    if (n.includes('gitar')) return n.includes('bas') ? photos['Bas gitar'] : (n.includes('akustik') ? photos['Akustik gitar'] : photos['Elektro gitar']);
+    if (['keman','viyola','çello','kontrbas','kemençe'].some(x => n.includes(x))) return photos['Keman'];
+    if (n.includes('piyano') || n.includes('klavye')) return photos['Piyano'];
+    if (n.includes('davul') || n.includes('drum')) return photos['Davul seti'];
+    if (n.includes('line array')) return photos['Line Array L'];
+    if (n.includes('subwoofer')) return photos['2×18” Subwoofer L'];
+    if (n.includes('stagebox')) return photos['Stagebox'];
+    if (n.includes('mikrofon')) return photos['Vokal mikrofonu'];
+    if (category && categoryPhotos[category]) return categoryPhotos[category];
+    return null;
+  }
+  function apply(container) {
+    container.querySelectorAll('.item').forEach(item => {
+      const name = nameFromItem(item), icon = item.querySelector('.icon');
+      const category = icon?.className.match(/icon-(\w+)/)?.[1], url = urlFor(name, category);
+      if (!icon || !url || icon.dataset.photoUrl === url) return;
+      icon.dataset.photoUrl = url;
+      icon.innerHTML = `<img class="equipment-photo" src="${url}" alt="${escape(name)}" loading="lazy" referrerpolicy="no-referrer">`;
+    });
+    container.querySelectorAll('.obj').forEach(obj => {
+      const icon = obj.querySelector('.obj-icon'), name = nameFromObject(obj), url = urlFor(name);
+      if (!icon || !url || icon.dataset.photoUrl === url) return;
+      icon.dataset.photoUrl = url;
+      icon.innerHTML = `<img class="equipment-photo stage-photo" src="${url}" alt="${escape(name)}" loading="lazy" referrerpolicy="no-referrer">`;
+    });
+  }
+  const style = document.createElement('style');
+  style.textContent = `.equipment-photo{display:block;width:100%;height:100%;object-fit:contain;border-radius:7px;background:#fff}.icon .equipment-photo{padding:2px;box-sizing:border-box}.icon{overflow:hidden}.item .icon{width:58px;height:44px;flex:0 0 58px;background:#20262d;border:1px solid #39434d}.item .meta{font-weight:500}.obj-icon{height:52px;overflow:hidden;border-radius:7px;background:#fff}.stage-photo{padding:3px;box-sizing:border-box}header > div:first-child{display:flex;align-items:center;gap:10px}header > div:first-child:before{content:'';display:block;width:132px;height:38px;background:url('stagepulse-logo.svg') center/contain no-repeat}header > div:first-child b{display:none}header > div:first-child span{margin-left:0}`;
+  document.head.appendChild(style);
+  const run = () => apply(document);
+  const observer = new MutationObserver(() => requestAnimationFrame(run));
+  observer.observe(document.body, {childList:true, subtree:true});
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run, {once:true}); else run();
 })();
