@@ -1,9 +1,10 @@
-window.StagePulseEquipmentCatalog={version:6,items:[
+window.StagePulseEquipmentCatalog={version:7,items:[
 {cat:'console',name:'Midas M32',img:'https://cdn-media.empowertribe.com/2ec241f460b6433b93fbf6a39abf319a/Image_MI_0603-ADX_M32_Front_XL.png',w:1.55,h:.85},
-{cat:'console',name:'Allen & Heath Avantis',img:'https://commons.wikimedia.org/wiki/Special:Redirect/file/Allen_%26_Heath_%27Avantis%27_console_mixer.jpg',w:1.30,h:.42},
+{cat:'console',name:'Allen & Heath Avantis',img:'https://shop.ccisolutions.com/StoreFront/jsp/images/categories/ANH.JPG',w:1.30,h:.65,blend:'multiply'},
 {cat:'console',name:'Yamaha M7CL',img:'https://commons.wikimedia.org/wiki/Special:Redirect/file/Yamaha_M7CL_digital_live-sound_mixing_console_-_left_half_angled.jpg',w:1.30,h:.65},
-{cat:'console',name:'Yamaha CL5',img:'https://commons.wikimedia.org/wiki/Special:Redirect/file/Yamaha_M7CL_digital_live-sound_mixing_console_-_left_half_angled.jpg',w:1.30,h:.65},
-{cat:'console',name:'Yamaha DM7',img:'https://commons.wikimedia.org/wiki/Special:Redirect/file/Yamaha_M7CL_digital_live-sound_mixing_console_-_left_half_angled.jpg',w:1.30,h:.65},
+{cat:'console',name:'Yamaha CL5',img:'https://www.nicepng.com/png/detail/392-3923618_yamaha-cl5-yamaha-cl5-digital-mixing-console.png',w:1.30,h:.52},
+{cat:'console',name:'Yamaha DM7',img:'https://www.prolighting.de/de/tontechnik/mischpult/digitalmischpulte/yamaha-dm7-digital-mixing-console.html',w:1.30,h:.70,blend:'multiply'},
+{cat:'console',name:'DiGiCo SD9',img:'https://images.squarespace-cdn.com/content/v1/6615269f96189162f570f21d/1715615320072-0NC1QMQGC06NVBZDAH82/0022_Digico-SD9-Front.jpg?format=1000w',w:1.30,h:.85,blend:'multiply'},
 {cat:'instrument',name:'Bateri',img:'https://commons.wikimedia.org/wiki/Special:Redirect/file/Drum_set.png',w:2.10,h:1.55},
 {cat:'instrument',name:'Elektro Gitar',img:'https://commons.wikimedia.org/wiki/Special:Redirect/file/E-Gitarre.png',w:.38,h:1.05},
 {cat:'instrument',name:'Fender Telecaster',img:'https://commons.wikimedia.org/wiki/Special:Redirect/file/Fender_72_Telecaster_Thinline.png',w:.38,h:1.10},
