@@ -1,0 +1,70 @@
+name: StagePulse Plot Update Channel
+
+on:
+  push:
+    paths:
+      - '.github/workflows/update-channel.yml'
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download latest release APK
+        run: |
+          set -euo pipefail
+          mkdir -p pages/updates
+          TAG=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq '.tagName')
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern 'app-release.apk' --output pages/updates/StagePulse-Plot.apk --clobber
+          test -s pages/updates/StagePulse-Plot.apk
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
+
+      - name: Build update manifest
+        run: |
+          set -euo pipefail
+          VERSION="${TAG#v}"
+          IFS=. read -r MAJOR MINOR PATCH <<< "$VERSION"
+          MAJOR=${MAJOR:-0}; MINOR=${MINOR:-0}; PATCH=${PATCH:-0}
+          VERSION_CODE=$((MAJOR * 10000 + MINOR * 100 + PATCH))
+          SHA256=$(sha256sum pages/updates/StagePulse-Plot.apk | awk '{print $1}')
+          cat > pages/updates/latest.json <<EOF
+          {
+            "package": "com.stagepulse.mix",
+            "version": "$VERSION",
+            "versionCode": $VERSION_CODE,
+            "apk": "https://ibrahimfoh.github.io/Stagepulseplot/updates/StagePulse-Plot.apk",
+            "sha256": "$SHA256"
+          }
+          EOF
+          printf '%s\n' '<!doctype html><html><head><meta charset="utf-8"><title>StagePulse Plot Updates</title></head><body><h1>StagePulse Plot Updates</h1></body></html>' > pages/index.html
+          touch pages/.nojekyll
+          test -s pages/updates/latest.json
+          cat pages/updates/latest.json
+          sha256sum pages/updates/StagePulse-Plot.apk
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: pages
+
+      - name: Deploy GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
