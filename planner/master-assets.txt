@@ -1,0 +1,2 @@
+Kaynak APK: Stage Plan Master.apk
+Ekipman görselleri bu APK içindeki res/drawable kaynaklarından incelendi. Uygulamada kullanılacak ekipman görselleri bu kaynak setinden seçilecektir.
