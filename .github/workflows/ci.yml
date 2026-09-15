@@ -1,4 +1,4 @@
-name: StagePulse Stage Planner CI
+name: StagePulse Plot CI
 
 on:
   push:
@@ -39,6 +39,7 @@ jobs:
           APK="android/app/build/outputs/apk/release/app-release-unsigned.apk"
           test -s "$APK"
           "$ANDROID_HOME/build-tools/35.0.0/aapt2" dump badging "$APK" | grep -F "package: name='com.stagepulse.mix' versionCode='20000' versionName='2.0.0'"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt2" dump badging "$APK" | grep -F "application-label:'StagePulse Plot'"
           SIZE=$(stat -c '%s' "$APK")
           test "$SIZE" -gt 10000
           echo "APK=$APK" >> "$GITHUB_ENV"
@@ -46,5 +47,5 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: StagePulseMix-stage-planner-apk
+          name: StagePulse-Plot-apk
           path: android/app/build/outputs/apk/release/*.apk
