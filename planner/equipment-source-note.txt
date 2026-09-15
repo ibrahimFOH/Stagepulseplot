@@ -1,1 +1,2 @@
-Stage Plan Master.apk kaynak ekipman görselleri kullanılacaktır. Bu dosya yalnızca kaynak notudur; uygulama çalışma zamanında APK içeriğine ihtiyaç duymaz.
+Stage Plan Master.apk kaynak ekipman görselleri kullanılacaktır.
+Bu dosya kaynak notudur.
