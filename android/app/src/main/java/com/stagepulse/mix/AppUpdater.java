@@ -24,7 +24,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public final class AppUpdater {
-    private static final String UPDATE_MANIFEST_URL = "https://stagepulse.com.tr/public-updates/latest.json";
+    private static final String UPDATE_MANIFEST_URL = "https://ibrahimfoh.github.io/Stagepulseplot/updates/latest.json";
     private static final String EXPECTED_PACKAGE = "com.stagepulse.mix";
 
     private final Activity activity;
