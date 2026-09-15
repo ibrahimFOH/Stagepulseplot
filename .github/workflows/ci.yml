@@ -1,4 +1,4 @@
-name: StagePulseMix CI
+name: StagePulse Stage Planner CI
 
 on:
   push:
@@ -14,29 +14,6 @@ env:
   GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx2g -Dfile.encoding=UTF-8
 
 jobs:
-  node:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - name: Install dependencies
-        run: npm ci
-      - name: Check syntax
-        run: npm run check
-      - name: Test
-        run: npm test
-      - name: Build source package
-        run: npm run package:source
-      - name: Upload source package
-        uses: actions/upload-artifact@v4
-        with:
-          name: StagePulseMix-source
-          path: dist/StagePulseMix-source.zip
-
   android:
     runs-on: ubuntu-latest
     steps:
