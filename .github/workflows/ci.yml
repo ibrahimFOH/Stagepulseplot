@@ -34,8 +34,10 @@ jobs:
           set -euo pipefail
           node --check planner/app.js
           node --check planner/rider.js
+          node --check planner/photo-icons.js
           node --check android/app/src/main/assets/planner/app.js
           node --check android/app/src/main/assets/planner/rider.js
+          node --check android/app/src/main/assets/planner/photo-icons.js
       - name: Verify bundled planner is synchronized
         run: |
           set -euo pipefail
@@ -44,6 +46,10 @@ jobs:
           cmp -s planner/style.css android/app/src/main/assets/planner/style.css
           cmp -s planner/rider.js android/app/src/main/assets/planner/rider.js
           cmp -s planner/rider.css android/app/src/main/assets/planner/rider.css
+          grep -F 'photo-icons.js?v=1' planner/index.html
+          grep -F 'photo-icons.js?v=1' android/app/src/main/assets/planner/index.html
+          test -s planner/photo-icons.js
+          test -s android/app/src/main/assets/planner/photo-icons.js
       - name: Prepare signing keystore
         env:
           STAGEPULSE_KEYSTORE_BASE64: ${{ secrets.STAGEPULSE_KEYSTORE_BASE64 }}
@@ -79,6 +85,7 @@ jobs:
           unzip -l "$APK" | grep -F "assets/planner/rider.css"
           unzip -l "$APK" | grep -F "assets/planner/index.html"
           unzip -l "$APK" | grep -F "assets/planner/app.js"
+          unzip -l "$APK" | grep -F "assets/planner/photo-icons.js"
           SHA256=$(sha256sum "$APK" | cut -d' ' -f1)
           echo "APK_SHA256=$SHA256" >> "$GITHUB_ENV"
           SIZE=$(stat -c '%s' "$APK")
