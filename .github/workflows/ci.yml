@@ -41,12 +41,14 @@ jobs:
       - name: Verify bundled planner is synchronized
         run: |
           set -euo pipefail
-          cmp -s planner/app.js android/app/src/main/assets/planner/app.js
-          cmp -s planner/index.html android/app/src/main/assets/planner/index.html
-          cmp -s planner/style.css android/app/src/main/assets/planner/style.css
-          cmp -s planner/rider.js android/app/src/main/assets/planner/rider.js
-          cmp -s planner/rider.css android/app/src/main/assets/planner/rider.css
-          cmp -s planner/photo-icons.js android/app/src/main/assets/planner/photo-icons.js
+          for f in app.js index.html style.css rider.js rider.css photo-icons.js; do
+            if cmp -s "planner/$f" "android/app/src/main/assets/planner/$f"; then
+              echo "SYNC OK: $f"
+            else
+              echo "SYNC MISMATCH: $f"
+              exit 1
+            fi
+          done
           grep -F 'photo-icons.js?v=1' planner/index.html
           grep -F 'photo-icons.js?v=1' android/app/src/main/assets/planner/index.html
           test -s planner/photo-icons.js
