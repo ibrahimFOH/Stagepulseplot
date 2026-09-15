@@ -12,11 +12,12 @@ on:
 
 permissions:
   contents: write
+  pages: write
+  id-token: write
 
 env:
   ANDROID_HOME: /usr/local/lib/android/sdk
   GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx2g -Dfile.encoding=UTF-8
-  UPDATE_BASE_URL: https://stagepulse.com.tr/public-updates
 
 jobs:
   release:
@@ -92,3 +93,32 @@ jobs:
           tag_name: v2.0.0
           generate_release_notes: true
           files: android/app/build/outputs/apk/release/app-release.apk
+      - name: Prepare public update channel
+        run: |
+          set -euo pipefail
+          APK=android/app/build/outputs/apk/release/app-release.apk
+          SHA256=$(sha256sum "$APK" | awk '{print $1}')
+          rm -rf pages
+          mkdir -p pages/updates
+          cp "$APK" pages/updates/StagePulse-Plot-2.0.0.apk
+          cat > pages/updates/latest.json <<EOF
+          {
+            "package": "com.stagepulse.mix",
+            "version": "2.0.0",
+            "versionCode": 20000,
+            "apk": "https://ibrahimfoh.github.io/Stagepulseplot/updates/StagePulse-Plot-2.0.0.apk",
+            "sha256": "$SHA256"
+          }
+          EOF
+          printf '%s\n' '<!doctype html><html><head><meta charset="utf-8"><title>StagePulse Plot Updates</title></head><body><h1>StagePulse Plot Updates</h1></body></html>' > pages/index.html
+          touch pages/.nojekyll
+          test -s pages/updates/latest.json
+          test -s pages/updates/StagePulse-Plot-2.0.0.apk
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+      - name: Upload update channel to GitHub Pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: pages
+      - name: Deploy update channel
+        uses: actions/deploy-pages@v4
