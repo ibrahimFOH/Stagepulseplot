@@ -1,0 +1,129 @@
+name: StagePulse Plot Release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+env:
+  ANDROID_HOME: /usr/local/lib/android/sdk
+  GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx2g -Dfile.encoding=UTF-8
+  UPDATE_BASE_URL: ${{ vars.STAGEPULSE_UPDATE_BASE_URL || 'https://stagepulse.com/public-updates' }}
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
+
+      - name: Prepare signing keystore
+        env:
+          STAGEPULSE_KEYSTORE_BASE64: ${{ secrets.STAGEPULSE_KEYSTORE_BASE64 }}
+          STAGEPULSE_KEYSTORE_PASSWORD: ${{ secrets.STAGEPULSE_KEYSTORE_PASSWORD }}
+          STAGEPULSE_KEY_ALIAS: ${{ secrets.STAGEPULSE_KEY_ALIAS }}
+          STAGEPULSE_KEY_PASSWORD: ${{ secrets.STAGEPULSE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$STAGEPULSE_KEYSTORE_BASE64"
+          test -n "$STAGEPULSE_KEYSTORE_PASSWORD"
+          test -n "$STAGEPULSE_KEY_ALIAS"
+          test -n "$STAGEPULSE_KEY_PASSWORD"
+          printf '%s' "$STAGEPULSE_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/stagepulse-release.keystore"
+          test -s "$RUNNER_TEMP/stagepulse-release.keystore"
+          echo "STAGEPULSE_KEYSTORE_PATH=$RUNNER_TEMP/stagepulse-release.keystore" >> "$GITHUB_ENV"
+          echo "STAGEPULSE_KEYSTORE_PASSWORD=$STAGEPULSE_KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+          echo "STAGEPULSE_KEY_ALIAS=$STAGEPULSE_KEY_ALIAS" >> "$GITHUB_ENV"
+          echo "STAGEPULSE_KEY_PASSWORD=$STAGEPULSE_KEY_PASSWORD" >> "$GITHUB_ENV"
+
+      - name: Install Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build signed release APK
+        working-directory: android
+        run: gradle :app:assembleRelease --no-daemon
+
+      - name: Read version
+        run: |
+          set -euo pipefail
+          VERSION_NAME=$(sed -n "s/.*versionName '\([^']*\)'.*/\1/p" android/app/build.gradle | head -1)
+          VERSION_CODE=$(sed -n "s/.*versionCode \([0-9][0-9]*\).*/\1/p" android/app/build.gradle | head -1)
+          test -n "$VERSION_NAME"
+          test -n "$VERSION_CODE"
+          echo "VERSION_NAME=$VERSION_NAME" >> "$GITHUB_ENV"
+          echo "VERSION_CODE=$VERSION_CODE" >> "$GITHUB_ENV"
+
+      - name: Verify release APK
+        run: |
+          set -euo pipefail
+          APK="android/app/build/outputs/apk/release/app-release.apk"
+          test -s "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt2" dump badging "$APK" | grep -F "package: name='com.stagepulse.mix' versionCode='$VERSION_CODE' versionName='$VERSION_NAME'"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt2" dump badging "$APK" | grep -F "application-label:'StagePulse Plot'"
+          unzip -l "$APK" | grep -F "assets/planner/rider.js"
+          unzip -l "$APK" | grep -F "assets/planner/rider.css"
+          unzip -l "$APK" | grep -F "assets/planner/index.html"
+          sha256sum "$APK" | tee "$RUNNER_TEMP/apk.sha256"
+          echo "APK_SHA256=$(cut -d' ' -f1 "$RUNNER_TEMP/apk.sha256")" >> "$GITHUB_ENV"
+
+      - name: Upload release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: StagePulse-Plot-${{ env.VERSION_NAME }}
+          path: android/app/build/outputs/apk/release/app-release.apk
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: android/app/build/outputs/apk/release/app-release.apk
+
+      - name: Publish public update package
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          APK="android/app/build/outputs/apk/release/app-release.apk"
+          DIST="$RUNNER_TEMP/updates-public-dist"
+          git clone --depth 1 --branch updates-public-dist "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$DIST"
+          mkdir -p "$DIST/public-updates"
+          cp "$APK" "$DIST/public-updates/StagePulse-Plot-${VERSION_NAME}.apk"
+          cp "$APK" "$DIST/public-updates/app-release.apk"
+          cat > "$DIST/public-updates/latest.json" <<EOF
+{
+  "package": "com.stagepulse.mix",
+  "version": "$VERSION_NAME",
+  "versionCode": $VERSION_CODE,
+  "apk": "$UPDATE_BASE_URL/app-release.apk",
+  "sha256": "$APK_SHA256",
+  "notes": "StagePulse Plot $VERSION_NAME",
+  "publishedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+}
+EOF
+          cd "$DIST"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add public-updates/StagePulse-Plot-${VERSION_NAME}.apk public-updates/app-release.apk public-updates/latest.json
+          if git diff --cached --quiet; then
+            echo "No public update changes to commit."
+          else
+            git commit -m "Publish StagePulse Plot $VERSION_NAME"
+            git push origin updates-public-dist
+          fi
