@@ -14,6 +14,17 @@ android {
     if (hasReleaseSigning) {
         signingConfigs { release { storeFile file(System.getenv('STAGEPULSE_KEYSTORE_PATH')); storePassword System.getenv('STAGEPULSE_KEYSTORE_PASSWORD'); keyAlias System.getenv('STAGEPULSE_KEY_ALIAS'); keyPassword System.getenv('STAGEPULSE_KEY_PASSWORD') } }
     }
-    buildTypes { release { minifyEnabled false; if (hasReleaseSigning) signingConfig signingConfigs.release; proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro' } }
+    buildTypes {
+        release {
+            minifyEnabled false
+            if (hasReleaseSigning) {
+                signingConfig signingConfigs.release
+            } else {
+                // CI/test fallback: produce an installable APK instead of an unsigned artifact.
+                signingConfig signingConfigs.debug
+            }
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
 }
 dependencies { implementation 'androidx.core:core:1.15.0' }
