@@ -33,26 +33,45 @@ jobs:
           set -euo pipefail
           node --check planner/app.js
           node --check planner/rider.js
+      - name: Prepare signing keystore
+        env:
+          STAGEPULSE_KEYSTORE_BASE64: ${{ secrets.STAGEPULSE_KEYSTORE_BASE64 }}
+          STAGEPULSE_KEYSTORE_PASSWORD: ${{ secrets.STAGEPULSE_KEYSTORE_PASSWORD }}
+          STAGEPULSE_KEY_ALIAS: ${{ secrets.STAGEPULSE_KEY_ALIAS }}
+          STAGEPULSE_KEY_PASSWORD: ${{ secrets.STAGEPULSE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$STAGEPULSE_KEYSTORE_BASE64"
+          test -n "$STAGEPULSE_KEYSTORE_PASSWORD"
+          test -n "$STAGEPULSE_KEY_ALIAS"
+          test -n "$STAGEPULSE_KEY_PASSWORD"
+          printf '%s' "$STAGEPULSE_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/stagepulse-release.keystore"
+          test -s "$RUNNER_TEMP/stagepulse-release.keystore"
+          echo "STAGEPULSE_KEYSTORE_PATH=$RUNNER_TEMP/stagepulse-release.keystore" >> "$GITHUB_ENV"
+          echo "STAGEPULSE_KEYSTORE_PASSWORD=$STAGEPULSE_KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+          echo "STAGEPULSE_KEY_ALIAS=$STAGEPULSE_KEY_ALIAS" >> "$GITHUB_ENV"
+          echo "STAGEPULSE_KEY_PASSWORD=$STAGEPULSE_KEY_PASSWORD" >> "$GITHUB_ENV"
       - name: Install Gradle
         uses: gradle/actions/setup-gradle@v4
-      - name: Build release APK
+      - name: Build signed release APK
         working-directory: android
         run: gradle :app:assembleRelease --no-daemon
-      - name: Inspect APK
+      - name: Inspect signed APK
         run: |
           set -euo pipefail
           APK="android/app/build/outputs/apk/release/app-release.apk"
           test -s "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$APK"
           "$ANDROID_HOME/build-tools/35.0.0/aapt2" dump badging "$APK" | grep -F "package: name='com.stagepulse.mix' versionCode='20000' versionName='2.0.0'"
           "$ANDROID_HOME/build-tools/35.0.0/aapt2" dump badging "$APK" | grep -F "application-label:'StagePulse Plot'"
           unzip -l "$APK" | grep -F "assets/planner/rider.js"
           unzip -l "$APK" | grep -F "assets/planner/rider.css"
           unzip -l "$APK" | grep -F "assets/planner/index.html"
+          SHA256=$(sha256sum "$APK" | cut -d' ' -f1)
+          echo "APK_SHA256=$SHA256" >> "$GITHUB_ENV"
           SIZE=$(stat -c '%s' "$APK")
           test "$SIZE" -gt 10000
-          echo "APK=$APK" >> "$GITHUB_ENV"
-          echo "APK_SIZE=$SIZE" >> "$GITHUB_ENV"
-      - name: Upload APK
+      - name: Upload installable APK
         uses: actions/upload-artifact@v4
         with:
           name: StagePulse-Plot-apk
