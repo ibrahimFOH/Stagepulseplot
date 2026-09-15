@@ -1,0 +1,1 @@
+Stage Plan Master.apk içindeki ekipman kaynakları referans alınmıştır.
