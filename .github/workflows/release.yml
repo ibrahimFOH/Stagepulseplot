@@ -12,11 +12,10 @@ permissions:
 env:
   ANDROID_HOME: /usr/local/lib/android/sdk
   GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx2g -Dfile.encoding=UTF-8
-  UPDATE_BASE_URL: ${{ vars.STAGEPULSE_UPDATE_BASE_URL || 'https://stagepulse.com.tr/public-updates' }}
+  UPDATE_BASE_URL: https://stagepulse.com.tr/public-updates
 
 jobs:
   release:
-    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -86,8 +85,10 @@ jobs:
           unzip -l "$APK" | grep -F "assets/planner/rider.js"
           unzip -l "$APK" | grep -F "assets/planner/rider.css"
           unzip -l "$APK" | grep -F "assets/planner/index.html"
-          sha256sum "$APK" | tee "$RUNNER_TEMP/apk.sha256"
-          echo "APK_SHA256=$(cut -d' ' -f1 "$RUNNER_TEMP/apk.sha256")" >> "$GITHUB_ENV"
+          SHA256=$(sha256sum "$APK" | cut -d' ' -f1)
+          echo "APK_SHA256=$SHA256" >> "$GITHUB_ENV"
+          SIZE=$(stat -c '%s' "$APK")
+          test "$SIZE" -gt 10000
 
       - name: Upload release artifact
         uses: actions/upload-artifact@v4
@@ -96,7 +97,7 @@ jobs:
           path: android/app/build/outputs/apk/release/app-release.apk
 
       - name: Create GitHub Release
-        if: startsWith(github.ref, 'refs/tags/')
+        if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
