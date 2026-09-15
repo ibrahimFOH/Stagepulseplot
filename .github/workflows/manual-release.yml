@@ -31,8 +31,18 @@ jobs:
       - uses: android-actions/setup-android@v3
         with:
           packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
-      - name: Validate JavaScript
-        run: node --check planner/app.js && node --check planner/rider.js
+      - name: Validate JavaScript and bundled planner
+        run: |
+          set -euo pipefail
+          node --check planner/app.js
+          node --check planner/rider.js
+          node --check android/app/src/main/assets/planner/app.js
+          node --check android/app/src/main/assets/planner/rider.js
+          cmp -s planner/app.js android/app/src/main/assets/planner/app.js
+          cmp -s planner/index.html android/app/src/main/assets/planner/index.html
+          cmp -s planner/style.css android/app/src/main/assets/planner/style.css
+          cmp -s planner/rider.js android/app/src/main/assets/planner/rider.js
+          cmp -s planner/rider.css android/app/src/main/assets/planner/rider.css
       - name: Prepare signing keystore
         env:
           STAGEPULSE_KEYSTORE_BASE64: ${{ secrets.STAGEPULSE_KEYSTORE_BASE64 }}
@@ -62,9 +72,11 @@ jobs:
           test -s "$APK"
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$APK"
           "$ANDROID_HOME/build-tools/35.0.0/aapt2" dump badging "$APK" | grep -F "package: name='com.stagepulse.mix' versionCode='20000' versionName='2.0.0'"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt2" dump badging "$APK" | grep -F "application-label:'StagePulse Plot'"
           unzip -l "$APK" | grep -F 'assets/planner/rider.js'
           unzip -l "$APK" | grep -F 'assets/planner/rider.css'
           unzip -l "$APK" | grep -F 'assets/planner/index.html'
+          unzip -l "$APK" | grep -F 'assets/planner/app.js'
           sha256sum "$APK"
           ls -lh "$APK"
       - name: Upload APK artifact
