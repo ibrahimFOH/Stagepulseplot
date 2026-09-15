@@ -1,10 +1,20 @@
 (()=>{
-const disabled=new Set(['instrument','pa','console','stage','light','production']);
-const clean=s=>String(s||'').replace(/\s+/g,' ').trim();
-function apply(root){
-root.querySelectorAll('.item').forEach(item=>{const icon=item.querySelector('.icon');const cat=icon?.className.match(/icon-(\w+)/)?.[1];if(!icon||!disabled.has(cat))return;icon.dataset.photoMode='disabled';});
-root.querySelectorAll('.obj').forEach(obj=>{const icon=obj.querySelector('.obj-icon');if(!icon)return;icon.querySelectorAll('img.equipment-photo').forEach(img=>img.remove());});
+const $=s=>document.querySelector(s);
+const groups={
+ instrument:['Klavye','Gitar','Bas gitar','Davul','Keman','Saksafon','Trompet','Trombon','Klarnet','Flüt','Akordeon','Bongo','Cajon','Piyano'],
+ pa:['Mikrofon','Wedge','Monitor','Line Array','Hoparlör','Subwoofer','DI Box','Stagebox'],
+ console:['Midas M32','Behringer X32','Yamaha CL5','Avantis','Mixer','Stagebox'],
+ stage:['Riser','Truss','Sandalye','Müzik Sehpası','Masa'],
+ light:['Moving Head','LED Par','Followspot','Strobe','Blinder','Işık'],
+ production:['FOH','Kamera','Video','Kablo','Power']
+};
+function apply(){
+ document.querySelectorAll('.item').forEach(item=>{
+  const icon=item.querySelector('.icon');
+  if(!icon)return;
+  icon.querySelectorAll('img.equipment-photo').forEach(i=>i.remove());
+  icon.classList.remove('photo-icon');
+ });
 }
-const style=document.createElement('style');style.textContent='.item .icon,.obj-icon{overflow:hidden}.equipment-photo{display:none!important}';document.head.appendChild(style);
-const run=()=>apply(document);const observer=new MutationObserver(run);observer.observe(document.body,{childList:true,subtree:true});if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',run,{once:true});else run();
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',apply,{once:true});else apply();
 })();
