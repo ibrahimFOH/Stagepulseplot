@@ -4,8 +4,6 @@ run-name: StagePulse Plot Release ${{ github.ref_name }}
 on:
   workflow_dispatch:
   push:
-    branches-ignore:
-      - '**'
     tags:
       - 'v*.*.*'
 
