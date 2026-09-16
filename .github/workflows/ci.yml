@@ -42,12 +42,7 @@ jobs:
         run: |
           set -euo pipefail
           for f in app.js index.html style.css rider.js rider.css equipment-catalog.js; do
-            if cmp -s "planner/$f" "android/app/src/main/assets/planner/$f"; then
-              echo "SYNC OK: $f"
-            else
-              echo "SYNC MISMATCH: $f"
-              exit 1
-            fi
+            cmp -s "planner/$f" "android/app/src/main/assets/planner/$f"
           done
           grep -F 'equipment-catalog.js?v=10' planner/index.html
           grep -F 'equipment-catalog.js?v=10' android/app/src/main/assets/planner/index.html
@@ -55,6 +50,21 @@ jobs:
           test -s android/app/src/main/assets/planner/equipment-catalog.js
           test -s planner/stagepulse-logo.svg
           test -s android/app/src/main/assets/planner/stagepulse-logo.svg
+      - name: Validate external catalog images
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/catalog-images"
+          grep -oE "img:'https?://[^']+" planner/equipment-catalog.js | sed "s/^img:'//" | while IFS= read -r url; do
+            safe=$(printf '%s' "$url" | sha256sum | cut -d' ' -f1)
+            body="$RUNNER_TEMP/catalog-images/$safe"
+            headers="$RUNNER_TEMP/catalog-images/$safe.headers"
+            code=$(curl -L --fail --silent --show-error --max-time 30 -A 'StagePulsePlot-CI/1.0' -D "$headers" -o "$body" -w '%{http_code}' "$url")
+            test "$code" = "200"
+            mime=$(file --brief --mime-type "$body")
+            case "$mime" in image/*) ;; *) echo "INVALID IMAGE MIME: $mime $url"; exit 1;; esac
+            test -s "$body"
+            echo "IMAGE OK: $mime $url"
+          done
       - name: Prepare signing keystore
         env:
           STAGEPULSE_KEYSTORE_BASE64: ${{ secrets.STAGEPULSE_KEYSTORE_BASE64 }}
@@ -73,6 +83,13 @@ jobs:
           echo "STAGEPULSE_KEYSTORE_PASSWORD=$STAGEPULSE_KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
           echo "STAGEPULSE_KEY_ALIAS=$STAGEPULSE_KEY_ALIAS" >> "$GITHUB_ENV"
           echo "STAGEPULSE_KEY_PASSWORD=$STAGEPULSE_KEY_PASSWORD" >> "$GITHUB_ENV"
+      - name: Validate update mechanism
+        run: |
+          set -euo pipefail
+          grep -F 'https://ibrahimfoh.github.io/Stagepulseplot/updates/latest.json' android/app/src/main/java/com/stagepulse/mix/AppUpdater.java
+          grep -F 'SHA-256 mismatch' android/app/src/main/java/com/stagepulse/mix/AppUpdater.java
+          grep -F 'application/vnd.android.package-archive' android/app/src/main/java/com/stagepulse/mix/AppUpdater.java
+          grep -F 'REQUEST_INSTALL_PACKAGES' android/app/src/main/AndroidManifest.xml
       - name: Install Gradle
         uses: gradle/actions/setup-gradle@v4
       - name: Build signed release APK
@@ -96,6 +113,29 @@ jobs:
           echo "APK_SHA256=$SHA256" >> "$GITHUB_ENV"
           SIZE=$(stat -c '%s' "$APK")
           test "$SIZE" -gt 10000
+      - name: Android runtime UI smoke test
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect
+          disable-animations: true
+          script: |
+            set -euo pipefail
+            adb install -r android/app/build/outputs/apk/release/app-release.apk
+            adb logcat -c
+            adb shell monkey -p com.stagepulse.mix 1
+            sleep 8
+            adb shell dumpsys activity activities | grep -F 'com.stagepulse.mix/.StagePlannerActivity'
+            adb shell pidof com.stagepulse.mix
+            if adb logcat -d | grep -E 'FATAL EXCEPTION|AndroidRuntime'; then
+              echo 'Runtime crash detected'
+              exit 1
+            fi
+            adb shell input keyevent 82 || true
+            adb shell am force-stop com.stagepulse.mix
       - name: Upload installable APK
         uses: actions/upload-artifact@v4
         with:
