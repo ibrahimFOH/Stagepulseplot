@@ -58,7 +58,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/catalog-images"
-          urls=$(grep -oE "img:'https?://[^']+" planner/equipment-catalog.js | sed "s/^img:'//" || true)
+          urls=$(grep -oE 'https?://[^"'"' ]+' planner/equipment-catalog.js | sort -u || true)
           if [ -n "$urls" ]; then
             while IFS= read -r url; do
               safe=$(printf '%s' "$url" | sha256sum | cut -d' ' -f1)
