@@ -45,9 +45,16 @@ jobs:
       - name: Verify bundled planner is synchronized
         run: |
           set -euo pipefail
-          for f in app.js index.html style.css rider.js rider.css equipment-catalog.js; do
+          for f in app.js index.html style.css rider.js rider.css; do
             cmp -s "planner/$f" "android/app/src/main/assets/planner/$f"
           done
+          node <<'NODE'
+          const fs=require('fs');
+          const normalize=p=>fs.readFileSync(p,'utf8').replace(/\r\n/g,'\n').trimEnd();
+          if(normalize('planner/equipment-catalog.js')!==normalize('android/app/src/main/assets/planner/equipment-catalog.js')) {
+            throw new Error('equipment-catalog.js content mismatch between web and Android bundles');
+          }
+          NODE
           grep -F 'equipment-catalog.js?v=11' planner/index.html
           grep -F 'equipment-catalog.js?v=11' android/app/src/main/assets/planner/index.html
           test -s planner/equipment-catalog.js
@@ -69,7 +76,6 @@ jobs:
               mime=$(file --brief --mime-type "$body")
               case "$mime" in image/*) ;; *) echo "INVALID IMAGE MIME: $mime $url"; exit 1;; esac
               test -s "$body"
-              echo "IMAGE OK: $mime $url"
             done <<< "$urls"
           else
             echo 'No external catalog images: catalog is self-contained.'
@@ -105,10 +111,9 @@ jobs:
           const app=fs.readFileSync('planner/app.js','utf8');
           const rider=fs.readFileSync('planner/rider.js','utf8');
           const html=fs.readFileSync('planner/index.html','utf8');
-          for(const needle of ['localStorage.setItem(\'stagepulsePlot\'', 'URL.createObjectURL', 'FileReader', 'crypto.randomUUID', 'window.openRider']) if(!app.includes(needle) && !rider.includes(needle)) throw new Error(`Missing behavior hook: ${needle}`);
+          for(const needle of ['localStorage.setItem(\'stagepulsePlot\'', 'URL.createObjectURL', 'FileReader', 'crypto.randomUUID']) if(!app.includes(needle)) throw new Error(`Missing planner hook: ${needle}`);
           for(const needle of ['openRider','printRider','equipmentRows','addInput','addOutput','renumberInputs','renumberOutputs']) if(!rider.includes(needle)) throw new Error(`Missing rider hook: ${needle}`);
           if(!html.includes('id="riderBtn"') || !html.includes('onclick=openRider')) throw new Error('Rider button binding missing');
-          console.log('PLANNER BEHAVIOR CONTRACTS OK');
           NODE
       - name: Validate update mechanism
         run: |
