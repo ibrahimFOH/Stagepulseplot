@@ -37,19 +37,29 @@ jobs:
           set -euo pipefail
           node --check planner/app.js
           node --check planner/rider.js
-          node --check planner/photo-icons.js
+          node --check planner/equipment-catalog.js
           node --check android/app/src/main/assets/planner/app.js
           node --check android/app/src/main/assets/planner/rider.js
-          node --check android/app/src/main/assets/planner/photo-icons.js
-          cmp -s planner/app.js android/app/src/main/assets/planner/app.js
-          cmp -s planner/index.html android/app/src/main/assets/planner/index.html
-          cmp -s planner/style.css android/app/src/main/assets/planner/style.css
-          cmp -s planner/rider.js android/app/src/main/assets/planner/rider.js
-          cmp -s planner/rider.css android/app/src/main/assets/planner/rider.css
-          cmp -s planner/photo-icons.js android/app/src/main/assets/planner/photo-icons.js
-          cmp -s planner/stagepulse-logo.svg android/app/src/main/assets/planner/stagepulse-logo.svg
+          node --check android/app/src/main/assets/planner/equipment-catalog.js
+          for f in app.js index.html style.css rider.js rider.css equipment-catalog.js; do cmp -s "planner/$f" "android/app/src/main/assets/planner/$f"; done
+          grep -F 'equipment-catalog.js?v=10' planner/index.html
+          grep -F 'equipment-catalog.js?v=10' android/app/src/main/assets/planner/index.html
           test -s planner/stagepulse-logo.svg
           test -s android/app/src/main/assets/planner/stagepulse-logo.svg
+      - name: Validate external catalog images
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/catalog-images"
+          grep -oE "img:'https?://[^']+" planner/equipment-catalog.js | sed "s/^img:'//" | while IFS= read -r url; do
+            safe=$(printf '%s' "$url" | sha256sum | cut -d' ' -f1)
+            body="$RUNNER_TEMP/catalog-images/$safe"
+            code=$(curl -L --fail --silent --show-error --max-time 30 -A 'StagePulsePlot-CI/1.0' -o "$body" -w '%{http_code}' "$url")
+            test "$code" = "200"
+            mime=$(file --brief --mime-type "$body")
+            case "$mime" in image/*) ;; *) echo "INVALID IMAGE MIME: $mime $url"; exit 1;; esac
+            test -s "$body"
+            echo "IMAGE OK: $mime $url"
+          done
       - name: Prepare signing keystore
         env:
           STAGEPULSE_KEYSTORE_BASE64: ${{ secrets.STAGEPULSE_KEYSTORE_BASE64 }}
@@ -84,10 +94,29 @@ jobs:
           unzip -l "$APK" | grep -F 'assets/planner/rider.css'
           unzip -l "$APK" | grep -F 'assets/planner/index.html'
           unzip -l "$APK" | grep -F 'assets/planner/app.js'
-          unzip -l "$APK" | grep -F 'assets/planner/photo-icons.js'
+          unzip -l "$APK" | grep -F 'assets/planner/equipment-catalog.js'
           unzip -l "$APK" | grep -F 'assets/planner/stagepulse-logo.svg'
           sha256sum "$APK"
           ls -lh "$APK"
+      - name: Android runtime UI smoke test
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect
+          disable-animations: true
+          script: |
+            set -euo pipefail
+            adb install -r android/app/build/outputs/apk/release/app-release.apk
+            adb logcat -c
+            adb shell monkey -p com.stagepulse.mix 1
+            sleep 8
+            adb shell dumpsys activity activities | grep -F 'com.stagepulse.mix/.StagePlannerActivity'
+            adb shell pidof com.stagepulse.mix
+            if adb logcat -d | grep -E 'FATAL EXCEPTION|AndroidRuntime'; then exit 1; fi
+            adb shell am force-stop com.stagepulse.mix
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
@@ -129,4 +158,31 @@ jobs:
         with:
           path: pages
       - name: Deploy update channel
+        id: deployment
         uses: actions/deploy-pages@v4
+      - name: Verify public update channel
+        env:
+          UPDATE_MANIFEST: https://ibrahimfoh.github.io/Stagepulseplot/updates/latest.json
+          UPDATE_APK: https://ibrahimfoh.github.io/Stagepulseplot/updates/StagePulse-Plot-2.0.0.apk
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/update-check"
+          curl -L --fail --silent --show-error --max-time 30 "$UPDATE_MANIFEST" -o "$RUNNER_TEMP/update-check/latest.json"
+          python3 - <<'PY'
+          import json, os, re
+          p=os.path.join(os.environ['RUNNER_TEMP'],'update-check','latest.json')
+          data=json.load(open(p, encoding='utf-8'))
+          assert data['package']=='com.stagepulse.mix'
+          assert data['version']=='2.0.0'
+          assert data['versionCode']==20000
+          assert data['apk']==os.environ['UPDATE_APK']
+          assert re.fullmatch(r'[0-9a-fA-F]{64}', data['sha256'])
+          print('UPDATE MANIFEST OK')
+          PY
+          curl -L --fail --silent --show-error --max-time 60 "$UPDATE_APK" -o "$RUNNER_TEMP/update-check/update.apk"
+          test -s "$RUNNER_TEMP/update-check/update.apk"
+          ACTUAL=$(sha256sum "$RUNNER_TEMP/update-check/update.apk" | awk '{print $1}')
+          EXPECTED=$(python3 -c "import json; print(json.load(open('$RUNNER_TEMP/update-check/latest.json'))['sha256'])")
+          test "$ACTUAL" = "$EXPECTED"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$RUNNER_TEMP/update-check/update.apk"
+          echo "UPDATE APK SHA256 VERIFIED: $ACTUAL"
