@@ -1,4 +1,4 @@
-window.StagePulseEquipmentCatalog={version:9,items:[
+window.StagePulseEquipmentCatalog={version:10,items:[
 {cat:'console',name:'Midas M32',img:'https://cdn-media.empowertribe.com/2ec241f460b6433b93fbf6a39abf319a/Image_MI_0603-ADX_M32_Front_XL.png',w:1.55,h:.85},
 {cat:'console',name:'Allen & Heath Avantis',img:'https://shop.ccisolutions.com/StoreFront/jsp/images/categories/ANH.JPG',w:1.30,h:.65,blend:'multiply'},
 {cat:'console',name:'Yamaha M7CL',img:'https://commons.wikimedia.org/wiki/Special:Redirect/file/Yamaha_M7CL_digital_live-sound_mixing_console_-_left_half_angled.jpg',w:1.30,h:.65},
@@ -22,7 +22,7 @@ window.StagePulseEquipmentCatalog={version:9,items:[
 {cat:'pa',name:'AKG C214',img:'https://commons.wikimedia.org/wiki/Special:Redirect/file/AKG_C214_Condenser_microphone.png',w:.10,h:.34},
 {cat:'pa',name:'Shure PSM300',img:'https://www.pngkey.com/png/detail/608-6088655_shure-psm-300-twin-pack-band-g20-aed.png',w:.55,h:.30},
 {cat:'pa',name:'Behringer P2',img:'https://cdn-media.empowertribe.com/242b61f813674fe6ac558c7015ed4cf0/Image_BE_0609-AAJ_P2_Front_XL.png',w:.10,h:.16},
-{cat:'pa',name:'Çift 18" Subbas',img:'https://commons.wikimedia.org/wiki/Special:Redirect/file/Cardioid_Subwoofers.png',w:1.25,h:.72},
+{cat:'pa',name:'Çift 18" Subbas',img:'https://professional.dolby.com/siteassets/products/dolby-audio-products/sb218-dual-18-subwoofer-speaker/dolby_sb218_.17.jpg?heightratio=0.5625&mode=crop&quality=80&width=1440',w:1.25,h:.72},
 {cat:'pa',name:'Line Array Modül',img:'https://w7.pngwing.com/pngs/91/877/png-transparent-audio-jbl-professional-vrx932la-loudspeaker-line-array-public-address-systems-jbl-logo-electronics-sound-audio-equipment.png',w:.65,h:.65},
 {cat:'pa',name:'Stage Wedge Monitor',img:'https://e7.pngegg.com/pngimages/993/28/png-clipart-full-range-speaker-powered-speakers-loudspeaker-jbl-stage-monitor-system-amplifier-bass-volume-sound-electronic-device.png',w:.75,h:.50},
 {cat:'pa',name:'DI Box',img:'https://commons.wikimedia.org/wiki/Special:Redirect/file/DI-Box.jpg',w:.30,h:.18},
