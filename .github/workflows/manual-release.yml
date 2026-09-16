@@ -19,6 +19,10 @@ env:
   ANDROID_HOME: /usr/local/lib/android/sdk
   GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx2g -Dfile.encoding=UTF-8
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   release:
     if: ${{ inputs.confirm == 'RELEASE' }}
@@ -104,7 +108,8 @@ jobs:
           echo "STAGEPULSE_KEYSTORE_PASSWORD=$STAGEPULSE_KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
           echo "STAGEPULSE_KEY_ALIAS=$STAGEPULSE_KEY_ALIAS" >> "$GITHUB_ENV"
           echo "STAGEPULSE_KEY_PASSWORD=$STAGEPULSE_KEY_PASSWORD" >> "$GITHUB_ENV"
-      - uses: gradle/actions/setup-gradle@v4
+      - name: Install Gradle
+        uses: gradle/actions/setup-gradle@v4
       - name: Build release APK
         working-directory: android
         run: gradle :app:assembleRelease --no-daemon
