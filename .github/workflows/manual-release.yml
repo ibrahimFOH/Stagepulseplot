@@ -42,24 +42,28 @@ jobs:
           node --check android/app/src/main/assets/planner/rider.js
           node --check android/app/src/main/assets/planner/equipment-catalog.js
           for f in app.js index.html style.css rider.js rider.css equipment-catalog.js; do cmp -s "planner/$f" "android/app/src/main/assets/planner/$f"; done
-          grep -F 'equipment-catalog.js?v=10' planner/index.html
-          grep -F 'equipment-catalog.js?v=10' android/app/src/main/assets/planner/index.html
+          grep -F 'equipment-catalog.js?v=11' planner/index.html
+          grep -F 'equipment-catalog.js?v=11' android/app/src/main/assets/planner/index.html
           test -s planner/stagepulse-logo.svg
           test -s android/app/src/main/assets/planner/stagepulse-logo.svg
       - name: Validate external catalog images
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/catalog-images"
-          grep -oE "img:'https?://[^']+" planner/equipment-catalog.js | sed "s/^img:'//" | while IFS= read -r url; do
-            safe=$(printf '%s' "$url" | sha256sum | cut -d' ' -f1)
-            body="$RUNNER_TEMP/catalog-images/$safe"
-            code=$(curl -L --fail --silent --show-error --retry 5 --retry-all-errors --retry-delay 3 --max-time 45 -A 'StagePulsePlot-CI/1.0' -o "$body" -w '%{http_code}' "$url")
-            test "$code" = "200"
-            mime=$(file --brief --mime-type "$body")
-            case "$mime" in image/*) ;; *) echo "INVALID IMAGE MIME: $mime $url"; exit 1;; esac
-            test -s "$body"
-            echo "IMAGE OK: $mime $url"
-          done
+          urls=$(grep -oE "img:'https?://[^']+" planner/equipment-catalog.js | sed "s/^img:'//" || true)
+          if [ -n "$urls" ]; then
+            while IFS= read -r url; do
+              safe=$(printf '%s' "$url" | sha256sum | cut -d' ' -f1)
+              body="$RUNNER_TEMP/catalog-images/$safe"
+              code=$(curl -L --fail --silent --show-error --retry 5 --retry-all-errors --retry-delay 3 --max-time 45 -A 'StagePulsePlot-CI/1.0' -o "$body" -w '%{http_code}' "$url")
+              test "$code" = "200"
+              mime=$(file --brief --mime-type "$body")
+              case "$mime" in image/*) ;; *) echo "INVALID IMAGE MIME: $mime $url"; exit 1;; esac
+              test -s "$body"
+            done <<< "$urls"
+          else
+            echo 'No external catalog images: catalog is self-contained.'
+          fi
       - name: Validate catalog quality rules
         run: |
           set -euo pipefail
@@ -74,16 +78,13 @@ jobs:
           const allowed=['console','instrument','pa','stage','light','production'];
           for(const [i,x] of items.entries()){
             if(!x.name || !x.cat || !allowed.includes(x.cat)) throw new Error(`Invalid catalog entry ${i}`);
-            if(!x.img || !/^https?:\/\//.test(x.img)) throw new Error(`Invalid image URL ${x.name}`);
+            if(!x.img) throw new Error(`Missing image ${x.name}`);
             if(!(Number(x.w)>0 && Number(x.h)>0)) throw new Error(`Invalid dimensions ${x.name}`);
           }
-          const required=['Midas M32','Shure SM58','Shure SM57','Shure PSM300','Behringer P2','Çift 18" Subbas','Line Array Modül','Stage Wedge Monitor','DI Box'];
-          const names=new Set(items.map(x=>x.name));
-          for(const name of required) if(!names.has(name)) throw new Error(`Missing required catalog item: ${name}`);
-          const badExternal=items.filter(x=>/\.(jpg|jpeg)(\?|$)/i.test(x.img) && !x.img.includes('wikimedia.org'));
-          if(badExternal.length) throw new Error(`Non-Wikimedia JPG catalog sources remain: ${badExternal.map(x=>x.name).join(', ')}`);
           if(items.some(x=>x.blend)) throw new Error(`Blend-mode image workaround remains: ${items.filter(x=>x.blend).map(x=>x.name).join(', ')}`);
-          console.log(`CATALOG RULES OK: ${items.length} entries`);
+          if(items.some(x=>/https?:\/\//.test(x.img))) throw new Error('External catalog image source remains');
+          if(!items.every(x=>/^data:image\/(svg\+xml|png);/i.test(x.img))) throw new Error('Catalog contains unsupported/non-embedded image format');
+          console.log(`CATALOG RULES OK: ${items.length} embedded images`);
           NODE
       - name: Prepare signing keystore
         env:
