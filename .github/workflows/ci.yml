@@ -65,6 +65,39 @@ jobs:
             test -s "$body"
             echo "IMAGE OK: $mime $url"
           done
+      - name: Validate catalog quality rules
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs=require('fs');
+          const s=fs.readFileSync('planner/equipment-catalog.js','utf8');
+          const m=s.match(/window\.StagePulseEquipmentCatalog=({[\s\S]*});\s*$/);
+          if(!m) throw new Error('Catalog object not found');
+          const obj=Function(`"use strict"; return (${m[1]});`)();
+          const items=obj.items||[];
+          if(items.length < 30) throw new Error(`Catalog too small: ${items.length}`);
+          const allowed=['console','instrument','pa','stage','light','production'];
+          for(const [i,x] of items.entries()){
+            if(!x.name || !x.cat || !allowed.includes(x.cat)) throw new Error(`Invalid catalog entry ${i}`);
+            if(!x.img || !/^https?:\/\//.test(x.img)) throw new Error(`Invalid image URL ${x.name}`);
+            if(!(Number(x.w)>0 && Number(x.h)>0)) throw new Error(`Invalid dimensions ${x.name}`);
+          }
+          const required=['Midas M32','Shure SM58','Shure SM57','Shure PSM300','Behringer P2','Çift 18" Subbas','Line Array Modül','Stage Wedge Monitor','DI Box'];
+          const names=new Set(items.map(x=>x.name));
+          for(const name of required) if(!names.has(name)) throw new Error(`Missing required catalog item: ${name}`);
+          const badExternal=items.filter(x=>/\.(jpg|jpeg)(\?|$)/i.test(x.img) && !x.img.includes('wikimedia.org'));
+          if(badExternal.length) throw new Error(`Non-Wikimedia JPG catalog sources remain: ${badExternal.map(x=>x.name).join(', ')}`);
+          if(items.some(x=>x.blend)) throw new Error(`Blend-mode image workaround remains: ${items.filter(x=>x.blend).map(x=>x.name).join(', ')}`);
+          console.log(`CATALOG RULES OK: ${items.length} entries`);
+          NODE
+      - name: Validate update mechanism
+        run: |
+          set -euo pipefail
+          grep -F 'https://ibrahimfoh.github.io/Stagepulseplot/updates/latest.json' android/app/src/main/java/com/stagepulse/mix/AppUpdater.java
+          grep -F 'SHA-256 mismatch' android/app/src/main/java/com/stagepulse/mix/AppUpdater.java
+          grep -F 'application/vnd.android.package-archive' android/app/src/main/java/com/stagepulse/mix/AppUpdater.java
+          grep -F 'REQUEST_INSTALL_PACKAGES' android/app/src/main/AndroidManifest.xml
+          grep -F 'setDomStorageEnabled(true)' android/app/src/main/java/com/stagepulse/mix/StagePlannerActivity.java
       - name: Prepare signing keystore
         env:
           STAGEPULSE_KEYSTORE_BASE64: ${{ secrets.STAGEPULSE_KEYSTORE_BASE64 }}
@@ -83,13 +116,6 @@ jobs:
           echo "STAGEPULSE_KEYSTORE_PASSWORD=$STAGEPULSE_KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
           echo "STAGEPULSE_KEY_ALIAS=$STAGEPULSE_KEY_ALIAS" >> "$GITHUB_ENV"
           echo "STAGEPULSE_KEY_PASSWORD=$STAGEPULSE_KEY_PASSWORD" >> "$GITHUB_ENV"
-      - name: Validate update mechanism
-        run: |
-          set -euo pipefail
-          grep -F 'https://ibrahimfoh.github.io/Stagepulseplot/updates/latest.json' android/app/src/main/java/com/stagepulse/mix/AppUpdater.java
-          grep -F 'SHA-256 mismatch' android/app/src/main/java/com/stagepulse/mix/AppUpdater.java
-          grep -F 'application/vnd.android.package-archive' android/app/src/main/java/com/stagepulse/mix/AppUpdater.java
-          grep -F 'REQUEST_INSTALL_PACKAGES' android/app/src/main/AndroidManifest.xml
       - name: Install Gradle
         uses: gradle/actions/setup-gradle@v4
       - name: Build signed release APK
@@ -134,7 +160,6 @@ jobs:
               echo 'Runtime crash detected'
               exit 1
             fi
-            adb shell input keyevent 82 || true
             adb shell am force-stop com.stagepulse.mix
       - name: Upload installable APK
         uses: actions/upload-artifact@v4
