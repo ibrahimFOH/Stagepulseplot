@@ -13,7 +13,7 @@ window.StagePulseEquipmentCatalog={version:10,items:[
 {cat:'instrument',name:'Roland Jupiter-8',img:'https://commons.wikimedia.org/wiki/Special:Redirect/file/Roland_Jupiter-8_Synth%2C_1983_%28transparent_bg_no_shadow%29.png',w:1.30,h:.45},
 {cat:'instrument',name:'Klasik Gitar',img:'https://commons.wikimedia.org/wiki/Special:Redirect/file/Guitar_on_transparent_background.png',w:1.05,h:.42},
 {cat:'instrument',name:'Akustik / Elektro Gitar',img:'https://commons.wikimedia.org/wiki/Special:Redirect/file/Electric_Guitar_%28Superstrat_based_on_ESP_KH_-_vertical%29.png',w:.40,h:1.05},
-{cat:'instrument',name:'Djembe',img:'https://p7.hiclipart.com/preview/349/145/649/djembe-drum-africa-drum-musical-instrument-djembe-drum-thumbnail.png',w:.55,h:.95},
+{cat:'instrument',name:'Djembe',img:'https://commons.wikimedia.org/wiki/Special:Redirect/file/Djembe_1.png',w:.55,h:.95},
 {cat:'instrument',name:'Cajon',img:'https://commons.wikimedia.org/wiki/Special:Redirect/file/Cajon_AJ.png',w:.45,h:.63},
 {cat:'instrument',name:'Trompet',img:'https://commons.wikimedia.org/wiki/Special:Redirect/file/Trumpet_1.png',w:.90,h:.30},
 {cat:'instrument',name:'Darbuka',img:'https://commons.wikimedia.org/wiki/Special:Redirect/file/Darbuka_Small.png',w:.60,h:.58},
