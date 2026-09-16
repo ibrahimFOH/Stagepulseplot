@@ -14,6 +14,10 @@ env:
   ANDROID_HOME: /usr/local/lib/android/sdk
   GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx2g -Dfile.encoding=UTF-8
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   android:
     runs-on: ubuntu-latest
@@ -75,6 +79,7 @@ jobs:
           if(!m) throw new Error('Catalog object not found');
           const obj=Function(`"use strict"; return (${m[1]});`)();
           const items=obj.items||[];
+          if(obj.version!==11) throw new Error(`Unexpected catalog version: ${obj.version}`);
           if(items.length < 30) throw new Error(`Catalog too small: ${items.length}`);
           const allowed=['console','instrument','pa','stage','light','production'];
           for(const [i,x] of items.entries()){
@@ -86,8 +91,21 @@ jobs:
           const names=new Set(items.map(x=>x.name));
           for(const name of required) if(!names.has(name)) throw new Error(`Missing required catalog item: ${name}`);
           if(items.some(x=>x.blend)) throw new Error(`Blend-mode image workaround remains: ${items.filter(x=>x.blend).map(x=>x.name).join(', ')}`);
-          if(items.some(x=>/\.(jpg|jpeg)(\?|$)/i.test(x.img))) console.warn('CATALOG WARNING: raster JPG/JPEG sources remain; local transparent PNG migration is still required.');
+          if(items.some(x=>/\.(jpg|jpeg)(\?|$)/i.test(x.img))) console.warn('CATALOG WARNING: JPG/JPEG sources remain; local transparent PNG migration is still required.');
           console.log(`CATALOG RULES OK: ${items.length} entries`);
+          NODE
+      - name: Validate planner behavior contracts
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs=require('fs');
+          const app=fs.readFileSync('planner/app.js','utf8');
+          const rider=fs.readFileSync('planner/rider.js','utf8');
+          const html=fs.readFileSync('planner/index.html','utf8');
+          for(const needle of ['localStorage.setItem(\'stagepulsePlot\'', 'URL.createObjectURL', 'FileReader', 'crypto.randomUUID', 'window.openRider']) if(!app.includes(needle) && !rider.includes(needle)) throw new Error(`Missing behavior hook: ${needle}`);
+          for(const needle of ['openRider','printRider','equipmentRows','addInput','addOutput','renumberInputs','renumberOutputs']) if(!rider.includes(needle)) throw new Error(`Missing rider hook: ${needle}`);
+          if(!html.includes('id="riderBtn"') || !html.includes('onclick=openRider')) throw new Error('Rider button binding missing');
+          console.log('PLANNER BEHAVIOR CONTRACTS OK');
           NODE
       - name: Validate update mechanism
         run: |
