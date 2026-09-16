@@ -53,13 +53,38 @@ jobs:
           grep -oE "img:'https?://[^']+" planner/equipment-catalog.js | sed "s/^img:'//" | while IFS= read -r url; do
             safe=$(printf '%s' "$url" | sha256sum | cut -d' ' -f1)
             body="$RUNNER_TEMP/catalog-images/$safe"
-            code=$(curl -L --fail --silent --show-error --max-time 30 -A 'StagePulsePlot-CI/1.0' -o "$body" -w '%{http_code}' "$url")
+            code=$(curl -L --fail --silent --show-error --retry 5 --retry-all-errors --retry-delay 3 --max-time 45 -A 'StagePulsePlot-CI/1.0' -o "$body" -w '%{http_code}' "$url")
             test "$code" = "200"
             mime=$(file --brief --mime-type "$body")
             case "$mime" in image/*) ;; *) echo "INVALID IMAGE MIME: $mime $url"; exit 1;; esac
             test -s "$body"
             echo "IMAGE OK: $mime $url"
           done
+      - name: Validate catalog quality rules
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs=require('fs');
+          const s=fs.readFileSync('planner/equipment-catalog.js','utf8');
+          const m=s.match(/window\.StagePulseEquipmentCatalog=({[\s\S]*});\s*$/);
+          if(!m) throw new Error('Catalog object not found');
+          const obj=Function(`"use strict"; return (${m[1]});`)();
+          const items=obj.items||[];
+          if(items.length < 30) throw new Error(`Catalog too small: ${items.length}`);
+          const allowed=['console','instrument','pa','stage','light','production'];
+          for(const [i,x] of items.entries()){
+            if(!x.name || !x.cat || !allowed.includes(x.cat)) throw new Error(`Invalid catalog entry ${i}`);
+            if(!x.img || !/^https?:\/\//.test(x.img)) throw new Error(`Invalid image URL ${x.name}`);
+            if(!(Number(x.w)>0 && Number(x.h)>0)) throw new Error(`Invalid dimensions ${x.name}`);
+          }
+          const required=['Midas M32','Shure SM58','Shure SM57','Shure PSM300','Behringer P2','Çift 18" Subbas','Line Array Modül','Stage Wedge Monitor','DI Box'];
+          const names=new Set(items.map(x=>x.name));
+          for(const name of required) if(!names.has(name)) throw new Error(`Missing required catalog item: ${name}`);
+          const badExternal=items.filter(x=>/\.(jpg|jpeg)(\?|$)/i.test(x.img) && !x.img.includes('wikimedia.org'));
+          if(badExternal.length) throw new Error(`Non-Wikimedia JPG catalog sources remain: ${badExternal.map(x=>x.name).join(', ')}`);
+          if(items.some(x=>x.blend)) throw new Error(`Blend-mode image workaround remains: ${items.filter(x=>x.blend).map(x=>x.name).join(', ')}`);
+          console.log(`CATALOG RULES OK: ${items.length} entries`);
+          NODE
       - name: Prepare signing keystore
         env:
           STAGEPULSE_KEYSTORE_BASE64: ${{ secrets.STAGEPULSE_KEYSTORE_BASE64 }}
