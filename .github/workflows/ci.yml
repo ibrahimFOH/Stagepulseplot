@@ -34,16 +34,14 @@ jobs:
           set -euo pipefail
           node --check planner/app.js
           node --check planner/rider.js
-          node --check planner/photo-icons.js
           node --check planner/equipment-catalog.js
           node --check android/app/src/main/assets/planner/app.js
           node --check android/app/src/main/assets/planner/rider.js
-          node --check android/app/src/main/assets/planner/photo-icons.js
           node --check android/app/src/main/assets/planner/equipment-catalog.js
       - name: Verify bundled planner is synchronized
         run: |
           set -euo pipefail
-          for f in app.js index.html style.css rider.js rider.css photo-icons.js equipment-catalog.js; do
+          for f in app.js index.html style.css rider.js rider.css equipment-catalog.js; do
             if cmp -s "planner/$f" "android/app/src/main/assets/planner/$f"; then
               echo "SYNC OK: $f"
             else
@@ -53,10 +51,6 @@ jobs:
           done
           grep -F 'equipment-catalog.js?v=10' planner/index.html
           grep -F 'equipment-catalog.js?v=10' android/app/src/main/assets/planner/index.html
-          grep -F 'photo-icons.js?v=2' planner/index.html
-          grep -F 'photo-icons.js?v=2' android/app/src/main/assets/planner/index.html
-          test -s planner/photo-icons.js
-          test -s android/app/src/main/assets/planner/photo-icons.js
           test -s planner/equipment-catalog.js
           test -s android/app/src/main/assets/planner/equipment-catalog.js
           test -s planner/stagepulse-logo.svg
@@ -96,7 +90,6 @@ jobs:
           unzip -l "$APK" | grep -F "assets/planner/rider.css"
           unzip -l "$APK" | grep -F "assets/planner/index.html"
           unzip -l "$APK" | grep -F "assets/planner/app.js"
-          unzip -l "$APK" | grep -F "assets/planner/photo-icons.js"
           unzip -l "$APK" | grep -F "assets/planner/equipment-catalog.js"
           unzip -l "$APK" | grep -F "assets/planner/stagepulse-logo.svg"
           SHA256=$(sha256sum "$APK" | cut -d' ' -f1)
