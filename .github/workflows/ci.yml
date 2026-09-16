@@ -58,7 +58,7 @@ jobs:
             safe=$(printf '%s' "$url" | sha256sum | cut -d' ' -f1)
             body="$RUNNER_TEMP/catalog-images/$safe"
             headers="$RUNNER_TEMP/catalog-images/$safe.headers"
-            code=$(curl -L --fail --silent --show-error --max-time 30 -A 'StagePulsePlot-CI/1.0' -D "$headers" -o "$body" -w '%{http_code}' "$url")
+            code=$(curl -L --fail --silent --show-error --retry 5 --retry-all-errors --retry-delay 3 --max-time 45 -A 'StagePulsePlot-CI/1.0' -D "$headers" -o "$body" -w '%{http_code}' "$url")
             test "$code" = "200"
             mime=$(file --brief --mime-type "$body")
             case "$mime" in image/*) ;; *) echo "INVALID IMAGE MIME: $mime $url"; exit 1;; esac
