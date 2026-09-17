@@ -50,7 +50,7 @@ jobs:
           done
           node <<'NODE'
           const fs=require('fs');
-          const normalize=p=>fs.readFileSync(p,'utf8').replace(/\r\n/g,'\n').trimEnd();
+          const normalize=p=>fs.readFileSync(p,'utf8').replace(/^\uFEFF/,'').replace(/\r\n/g,'\n').trimEnd();
           if(normalize('planner/equipment-catalog.js')!==normalize('android/app/src/main/assets/planner/equipment-catalog.js')) {
             throw new Error('equipment-catalog.js content mismatch between web and Android bundles');
           }
