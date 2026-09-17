@@ -93,7 +93,7 @@ jobs:
             if(!(Number(x.w)>0 && Number(x.h)>0)) throw new Error(`Invalid dimensions ${x.name}`);
           }
           if(items.some(x=>x.blend)) throw new Error(`Blend-mode image workaround remains: ${items.filter(x=>x.blend).map(x=>x.name).join(', ')}`);
-          if(items.some(x=>/https?:\/\//.test(x.img))) throw new Error('External catalog image source remains');
+          if(items.some(x=>/^https?:\/\//i.test(x.img))) throw new Error(`External catalog image source remains: ${items.filter(x=>/^https?:\/\//i.test(x.img)).map(x=>x.name).join(', ')}`);
           if(!items.every(x=>/^data:image\/(svg\+xml|png);/i.test(x.img))) throw new Error('Catalog contains unsupported/non-embedded image format');
           console.log(`CATALOG RULES OK: ${items.length} embedded images`);
           NODE
