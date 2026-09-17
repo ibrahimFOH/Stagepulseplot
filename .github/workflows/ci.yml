@@ -62,22 +62,18 @@ jobs:
       - name: Validate external catalog images
         run: |
           set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/catalog-images"
-          urls=$(grep -oE "https?://[^\"' ]+" planner/equipment-catalog.js | sort -u || true)
-          if [ -n "$urls" ]; then
-            while IFS= read -r url; do
-              safe=$(printf '%s' "$url" | sha256sum | cut -d' ' -f1)
-              body="$RUNNER_TEMP/catalog-images/$safe"
-              headers="$RUNNER_TEMP/catalog-images/$safe.headers"
-              code=$(curl -L --fail --silent --show-error --retry 5 --retry-all-errors --retry-delay 3 --max-time 45 -A 'StagePulsePlot-CI/1.0' -D "$headers" -o "$body" -w '%{http_code}' "$url")
-              test "$code" = "200"
-              mime=$(file --brief --mime-type "$body")
-              case "$mime" in image/*) ;; *) echo "INVALID IMAGE MIME: $mime $url"; exit 1;; esac
-              test -s "$body"
-            done <<< "$urls"
-          else
-            echo 'No external catalog images: catalog is self-contained.'
-          fi
+          node <<'NODE'
+          const fs=require('fs');
+          const s=fs.readFileSync('planner/equipment-catalog.js','utf8');
+          const m=s.match(/window\.StagePulseEquipmentCatalog=({[\s\S]*});\s*$/);
+          if(!m) throw new Error('Catalog object not found');
+          const obj=Function(`"use strict"; return (${m[1]});`)();
+          const items=obj.items||[];
+          if(!items.length) throw new Error('Catalog is empty');
+          const external=items.filter(x=>typeof x.img==='string' && /^https?:\/\//i.test(x.img));
+          if(external.length) throw new Error(`External catalog image source remains: ${external.map(x=>x.name).join(', ')}`);
+          console.log(`No external catalog image sources: ${items.length} catalog images are embedded.`);
+          NODE
       - name: Validate catalog quality rules
         run: |
           set -euo pipefail
