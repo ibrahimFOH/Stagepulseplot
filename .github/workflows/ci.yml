@@ -51,9 +51,7 @@ jobs:
           node <<'NODE'
           const fs=require('fs');
           const normalize=p=>fs.readFileSync(p,'utf8').replace(/^\uFEFF/,'').replace(/\r\n/g,'\n').trimEnd();
-          if(normalize('planner/equipment-catalog.js')!==normalize('android/app/src/main/assets/planner/equipment-catalog.js')) {
-            throw new Error('equipment-catalog.js content mismatch between web and Android bundles');
-          }
+          if(normalize('planner/equipment-catalog.js')!==normalize('android/app/src/main/assets/planner/equipment-catalog.js')) throw new Error('equipment-catalog.js content mismatch between web and Android bundles');
           NODE
           grep -F 'equipment-catalog.js?v=11' planner/index.html
           grep -F 'equipment-catalog.js?v=11' android/app/src/main/assets/planner/index.html
@@ -65,7 +63,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/catalog-images"
-          urls=$(grep -oE 'https?://[^"'"' ]+' planner/equipment-catalog.js | sort -u || true)
+          urls=$(grep -oE "https?://[^\"' ]+" planner/equipment-catalog.js | sort -u || true)
           if [ -n "$urls" ]; then
             while IFS= read -r url; do
               safe=$(printf '%s' "$url" | sha256sum | cut -d' ' -f1)
@@ -111,7 +109,7 @@ jobs:
           const app=fs.readFileSync('planner/app.js','utf8');
           const rider=fs.readFileSync('planner/rider.js','utf8');
           const html=fs.readFileSync('planner/index.html','utf8');
-          for(const needle of ['localStorage.setItem(\'stagepulsePlot\'', 'URL.createObjectURL', 'FileReader', 'crypto.randomUUID']) if(!app.includes(needle)) throw new Error(`Missing planner hook: ${needle}`);
+          for(const needle of ["localStorage.setItem('stagepulsePlot'",'URL.createObjectURL','FileReader','crypto.randomUUID']) if(!app.includes(needle)) throw new Error(`Missing planner hook: ${needle}`);
           for(const needle of ['openRider','printRider','equipmentRows','addInput','addOutput','renumberInputs','renumberOutputs']) if(!rider.includes(needle)) throw new Error(`Missing rider hook: ${needle}`);
           if(!html.includes('id="riderBtn"') || !html.includes('onclick=openRider')) throw new Error('Rider button binding missing');
           NODE
