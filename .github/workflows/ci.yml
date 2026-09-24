@@ -171,7 +171,7 @@ jobs:
           APK="android/app/build/outputs/apk/release/app-release.apk"
           test -s "$APK"
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$APK"
-          "$ANDROID_HOME/build-tools/35.0.0/aapt2" dump badging "$APK" | grep -F "package: name='com.stagepulse.mix' versionCode='20000' versionName='2.0.0'"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt2" dump badging "$APK" | grep -F "package: name='com.stagepulse.mix' versionCode='20001' versionName='2.0.1'"
           "$ANDROID_HOME/build-tools/35.0.0/aapt2" dump badging "$APK" | grep -F "application-label:'StagePulse Plot'"
           unzip -l "$APK" | grep -F "assets/planner/rider.js"
           unzip -l "$APK" | grep -F "assets/planner/rider.css"
