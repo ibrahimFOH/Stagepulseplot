@@ -96,10 +96,10 @@ jobs:
           if(items.some(x=>/^https?:\/\//i.test(x.img))) throw new Error(`External catalog image source remains: ${items.filter(x=>/^https?:\/\//i.test(x.img)).map(x=>x.name).join(', ')}`);
           for(const x of items){
             if(typeof x.img!=='string' || !x.img) throw new Error(`Missing image source for ${x.name}`);
-            if(/^https?:\\/\\//i.test(x.img)) throw new Error(`External image source remains: ${x.name}`);
+            if(/^https?:\/\//i.test(x.img)) throw new Error(`External image source remains: ${x.name}`);
             if(x.img.startsWith('data:image/')) {
-              if(!/^data:image\\/(svg\\+xml|png);/i.test(x.img)) throw new Error(`Unsupported embedded image format: ${x.name}`);
-            } else if(!/^img\\/.+\\.(png|svg|jpg|jpeg|webp)$/i.test(x.img)) {
+              if(!/^data:image\/(svg\+xml|png);/i.test(x.img)) throw new Error(`Unsupported embedded image format: ${x.name}`);
+            } else if(!/^img\/.+\.(png|svg|jpg|jpeg|webp)$/i.test(x.img)) {
               throw new Error(`Unsupported local image path: ${x.name} -> ${x.img}`);
             }
           }
