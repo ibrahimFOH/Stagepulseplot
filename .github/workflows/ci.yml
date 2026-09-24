@@ -132,7 +132,10 @@ jobs:
           const html=fs.readFileSync('planner/index.html','utf8');
           for(const needle of ["localStorage.setItem('stagepulsePlot'",'URL.createObjectURL','FileReader','crypto.randomUUID']) if(!app.includes(needle)) throw new Error(`Missing planner hook: ${needle}`);
           for(const needle of ['openRider','printRider','equipmentRows','addInput','addOutput','renumberInputs','renumberOutputs']) if(!rider.includes(needle)) throw new Error(`Missing rider hook: ${needle}`);
-          if(!html.includes('id="riderBtn"') || !html.includes('onclick=openRider')) throw new Error('Rider button binding missing');
+          if(!html.includes('id="riderBtn"') || !html.includes('window.openRider')) throw new Error('Rider button binding missing');
+          if(!rider.includes('function riderPanel') || !rider.includes('function openRider')) throw new Error('Rider runtime functions missing');
+          const bundled=fs.readFileSync('android/app/src/main/assets/planner/rider.js','utf8');
+          if(!bundled.includes('function riderPanel') || !bundled.includes('function openRider')) throw new Error('Bundled Rider runtime functions missing');
           NODE
       - name: Validate update mechanism
         run: |
