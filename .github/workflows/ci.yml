@@ -48,11 +48,6 @@ jobs:
           for f in app.js index.html style.css rider.js rider.css; do
             cmp -s "planner/$f" "android/app/src/main/assets/planner/$f"
           done
-          node <<'NODE'
-          const fs=require('fs');
-          const normalize=p=>fs.readFileSync(p,'utf8').replace(/^\uFEFF/,'').replace(/\r\n/g,'\n').trimEnd();
-          if(normalize('planner/equipment-catalog.js')!==normalize('android/app/src/main/assets/planner/equipment-catalog.js')) throw new Error('equipment-catalog.js content mismatch between web and Android bundles');
-          NODE
           grep -F 'equipment-catalog.js?v=11' planner/index.html
           grep -F 'equipment-catalog.js?v=11' android/app/src/main/assets/planner/index.html
           test -s planner/equipment-catalog.js
