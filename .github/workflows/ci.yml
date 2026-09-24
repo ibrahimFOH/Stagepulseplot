@@ -105,6 +105,27 @@ jobs:
           }
           console.log(`CATALOG RULES OK: ${items.length} embedded images`);
           NODE
+      - name: Validate all tracked planner assets
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs=require('fs');
+          const {execFileSync}=require('child_process');
+          const tracked=execFileSync('git',['ls-files','planner/img'],{encoding:'utf8'}).trim().split('\n').filter(Boolean);
+          const text=fs.readFileSync('planner/equipment-catalog.js','utf8');
+          const m=text.match(/window\.StagePulseEquipmentCatalog=({[\s\S]*});\s*$/);
+          if(!m) throw new Error('Catalog object not found');
+          const obj=Function(`"use strict"; return (${m[1]});`)();
+          const items=obj.items||[];
+          for(const x of items){
+            if(typeof x.img!=='string' || !x.img.startsWith('img/')) continue;
+            const p='planner/'+x.img;
+            if(!tracked.includes(p)) throw new Error(`Catalog image missing from git index: ${p}`);
+          }
+          const bad=tracked.filter(p=>!(/\.(png|svg|jpg|jpeg|webp)$/i.test(p)));
+          if(bad.length) throw new Error(`Unsupported planner image files: ${bad.join(', ')}`);
+          console.log(`PLANNER ASSETS OK: ${tracked.length} image files`);
+          NODE
       - name: Validate planner behavior contracts
         run: |
           set -euo pipefail
