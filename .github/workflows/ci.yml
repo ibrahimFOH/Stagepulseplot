@@ -94,7 +94,15 @@ jobs:
           }
           if(items.some(x=>x.blend)) throw new Error(`Blend-mode image workaround remains: ${items.filter(x=>x.blend).map(x=>x.name).join(', ')}`);
           if(items.some(x=>/^https?:\/\//i.test(x.img))) throw new Error(`External catalog image source remains: ${items.filter(x=>/^https?:\/\//i.test(x.img)).map(x=>x.name).join(', ')}`);
-          if(!items.every(x=>/^data:image\/(svg\+xml|png);/i.test(x.img))) throw new Error('Catalog contains unsupported/non-embedded image format');
+          for(const x of items){
+            if(typeof x.img!=='string' || !x.img) throw new Error(`Missing image source for ${x.name}`);
+            if(/^https?:\\/\\//i.test(x.img)) throw new Error(`External image source remains: ${x.name}`);
+            if(x.img.startsWith('data:image/')) {
+              if(!/^data:image\\/(svg\\+xml|png);/i.test(x.img)) throw new Error(`Unsupported embedded image format: ${x.name}`);
+            } else if(!/^img\\/.+\\.(png|svg|jpg|jpeg|webp)$/i.test(x.img)) {
+              throw new Error(`Unsupported local image path: ${x.name} -> ${x.img}`);
+            }
+          }
           console.log(`CATALOG RULES OK: ${items.length} embedded images`);
           NODE
       - name: Validate planner behavior contracts
