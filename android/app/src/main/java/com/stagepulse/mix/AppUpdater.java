@@ -30,12 +30,15 @@ public final class AppUpdater {
     private final Activity activity;
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private File pendingApk;
+    private volatile boolean updateCheckRunning;
 
     public AppUpdater(Activity activity) {
         this.activity = activity;
     }
 
     public void check() {
+        if (updateCheckRunning) return;
+        updateCheckRunning = true;
         executor.execute(() -> {
             try {
                 JSONObject manifest = readJson(UPDATE_MANIFEST_URL);
@@ -49,6 +52,8 @@ public final class AppUpdater {
                 activity.runOnUiThread(() -> prepareInstall(apk, manifest.optString("version", "")));
             } catch (Exception ignored) {
                 // Update checks are non-critical. The planner must remain usable offline.
+            } finally {
+                updateCheckRunning = false;
             }
         });
     }
