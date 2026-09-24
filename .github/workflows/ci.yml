@@ -45,7 +45,7 @@ jobs:
       - name: Verify bundled planner is synchronized
         run: |
           set -euo pipefail
-          for f in app.js index.html style.css rider.js rider.css; do
+          for f in app.js index.html style.css rider.js rider.css equipment-catalog.js; do
             cmp -s "planner/$f" "android/app/src/main/assets/planner/$f"
           done
           node <<'NODE'
