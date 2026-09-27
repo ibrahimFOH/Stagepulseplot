@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
     inputs:
       confirm:
-        description: 'Release StagePulse Plot 2.0.0'
+        description: 'Release StagePulse Plot 2.0.1'
         required: true
         default: 'RELEASE'
         type: string
@@ -125,7 +125,7 @@ jobs:
           APK=android/app/build/outputs/apk/release/app-release.apk
           test -s "$APK"
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$APK"
-          "$ANDROID_HOME/build-tools/35.0.0/aapt2" dump badging "$APK" | grep -F "package: name='com.stagepulse.mix' versionCode='20000' versionName='2.0.0'"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt2" dump badging "$APK" | grep -F "package: name='com.stagepulse.mix' versionCode='20001' versionName='2.0.1'"
           "$ANDROID_HOME/build-tools/35.0.0/aapt2" dump badging "$APK" | grep -F "application-label:'StagePulse Plot'"
           unzip -l "$APK" | grep -F 'assets/planner/rider.js'
           unzip -l "$APK" | grep -F 'assets/planner/rider.css'
@@ -157,14 +157,14 @@ jobs:
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: StagePulse-Plot-2.0.0-APK
+          name: StagePulse-Plot-2.0.1-APK
           path: android/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
           retention-days: 30
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v2.0.0
+          tag_name: v2.0.1
           generate_release_notes: true
           files: android/app/build/outputs/apk/release/app-release.apk
       - name: Prepare public update channel
@@ -174,20 +174,20 @@ jobs:
           SHA256=$(sha256sum "$APK" | awk '{print $1}')
           rm -rf pages
           mkdir -p pages/updates
-          cp "$APK" pages/updates/StagePulse-Plot-2.0.0.apk
+          cp "$APK" pages/updates/StagePulse-Plot-2.0.1.apk
           cat > pages/updates/latest.json <<EOF
           {
             "package": "com.stagepulse.mix",
-            "version": "2.0.0",
-            "versionCode": 20000,
-            "apk": "https://ibrahimfoh.github.io/Stagepulseplot/updates/StagePulse-Plot-2.0.0.apk",
+            "version": "2.0.1",
+            "versionCode": 20001,
+            "apk": "https://ibrahimfoh.github.io/Stagepulseplot/updates/StagePulse-Plot-2.0.1.apk",
             "sha256": "$SHA256"
           }
           EOF
           printf '%s\n' '<!doctype html><html><head><meta charset="utf-8"><title>StagePulse Plot Updates</title></head><body><h1>StagePulse Plot Updates</h1></body></html>' > pages/index.html
           touch pages/.nojekyll
           test -s pages/updates/latest.json
-          test -s pages/updates/StagePulse-Plot-2.0.0.apk
+          test -s pages/updates/StagePulse-Plot-2.0.1.apk
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
       - name: Upload update channel to GitHub Pages
@@ -200,7 +200,7 @@ jobs:
       - name: Verify public update channel
         env:
           UPDATE_MANIFEST: https://ibrahimfoh.github.io/Stagepulseplot/updates/latest.json
-          UPDATE_APK: https://ibrahimfoh.github.io/Stagepulseplot/updates/StagePulse-Plot-2.0.0.apk
+          UPDATE_APK: https://ibrahimfoh.github.io/Stagepulseplot/updates/StagePulse-Plot-2.0.1.apk
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/update-check"
@@ -210,8 +210,8 @@ jobs:
           p=os.path.join(os.environ['RUNNER_TEMP'],'update-check','latest.json')
           data=json.load(open(p, encoding='utf-8'))
           assert data['package']=='com.stagepulse.mix'
-          assert data['version']=='2.0.0'
-          assert data['versionCode']==20000
+          assert data['version']=='2.0.1'
+          assert data['versionCode']==20001
           assert data['apk']==os.environ['UPDATE_APK']
           assert re.fullmatch(r'[0-9a-fA-F]{64}', data['sha256'])
           print('UPDATE MANIFEST OK')
