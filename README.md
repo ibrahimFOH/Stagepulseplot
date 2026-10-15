@@ -7,7 +7,7 @@ StagePulse Plot is an Android stage-plot and technical-rider application for liv
 - `planner/` contains the web planner and Technical Rider UI.
 - `android/` contains the Android application shell and the bundled planner assets.
 - `.github/workflows/ci.yml` validates the planner, checks that bundled Android assets stay synchronized, builds the signed release APK, verifies it, and uploads the APK artifact.
-- `.github/workflows/manual-release.yml` builds the production release and creates the GitHub release for version `2.0.0`.
+- `.github/workflows/manual-release.yml` builds the production release and creates the GitHub release for version `2.0.1`.
 
 ## Local web planner
 
